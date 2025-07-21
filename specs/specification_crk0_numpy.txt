@@ -1,0 +1,48 @@
+"""
+Find the mathematical function skeleton that represents dA_dt, given data on t, A.
+"""
+
+import numpy as np
+
+#Initialize parameters
+MAX_NPARAMS = 10
+PRAMS_INIT = [1.0]*MAX_NPARAMS
+
+@evaluate.run
+def evaluate(data: dict) -> float:
+    """ Evaluate the equation on data observations."""
+    
+    # Load data observations
+    inputs, outputs = data['inputs'], data['outputs']
+    t, A = inputs[:,0], inputs[:,1]
+    
+    # Optimize parameters based on data
+    from scipy.optimize import minimize
+    def loss(params):
+        y_pred = equation(t, A, params)
+        return np.mean((y_pred - outputs) ** 2)
+
+    loss_partial = lambda params: loss(params)
+    result = minimize(loss_partial, [1.0]*MAX_NPARAMS, method='BFGS')
+    
+    # Return evaluation score
+    loss = result.fun
+
+    if np.isnan(loss) or np.isinf(loss):
+        return None
+    else:
+        return -loss
+
+@equation.evolve
+def equation(t: np.ndarray, A: np.ndarray, params: np.ndarray) -> np.ndarray:
+    """ Mathematical function for dA_dt
+
+    Args:
+        t: A numpy array representing observations of time.
+        A: A numpy array representing observations of concentration at time t.
+        params: Array of numeric constants or parameters to be optimized
+
+    Return:
+        A numpy array representing dA_dt as the result of applying the mathematical function to the inputs.
+    """
+    return params[0] * t + params[1] * A + params[2]
