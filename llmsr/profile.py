@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os.path
-from typing import List, Dict
+from typing import Dict
 import logging
 import json
 from llmsr import code_manipulation
@@ -82,10 +82,12 @@ class Profiler:
         sample_order = sample_order if sample_order is not None else 0
         function_str = str(programs)
         score = programs.score
+        fitted_params = getattr(programs, 'fitted_params', None)
         content = {
             'sample_order': sample_order,
             'function': function_str,
-            'score': score
+            'score': score,
+            'fitted_params': fitted_params
         }
         path = os.path.join(self._json_dir, f'samples_{sample_order}.json')
         with open(path, 'w') as json_file:
@@ -110,14 +112,14 @@ class Profiler:
         evaluate_time = function.evaluate_time
         score = function.score
         # log attributes of the function
-        print(f'================= Evaluated Function =================')
+        print('================= Evaluated Function =================')
         print(f'{function_str}')
-        print(f'------------------------------------------------------')
+        print('------------------------------------------------------')
         print(f'Score        : {str(score)}')
         print(f'Sample time  : {str(sample_time)}')
         print(f'Evaluate time: {str(evaluate_time)}')
         print(f'Sample orders: {str(sample_orders)}')
-        print(f'======================================================\n\n')
+        print('======================================================\n\n')
 
         # update best function in curve
         if function.score is not None and score > self._cur_best_program_score:

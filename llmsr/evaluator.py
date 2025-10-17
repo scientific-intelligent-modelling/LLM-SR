@@ -139,6 +139,7 @@ class LocalSandbox(Sandbox):
         """
         self._verbose = verbose
         self._numba_accelerate = numba_accelerate
+        self._last_fitted_params = None
 
 
     def run(self, program: str, function_to_run: str, function_to_evolve: str, 
@@ -192,6 +193,27 @@ class LocalSandbox(Sandbox):
     def _compile_and_run_function(self, program, function_to_run, function_to_evolve, 
                                   dataset, numba_accelerate, result_queue):
         try:
+            import re
+            # 注入参数捕获包装器，并将 minimize 调用重写为包装器
+            capture_code = (
+                "\n# ===== SIM param capture wrapper injected =====\n"
+                "def __sim_capture_minimize(*args, **kwargs):\n"
+                "    try:\n"
+                "        import scipy.optimize as _opt\n"
+                "        res = _opt.minimize(*args, **kwargs)\n"
+                "        try:\n"
+                "            globals()['__FITTED_PARAMS__'] = res.x.tolist() if hasattr(res, 'x') else None\n"
+                "        except Exception:\n"
+                "            globals()['__FITTED_PARAMS__'] = None\n"
+                "        return res\n"
+                "    except Exception:\n"
+                "        globals()['__FITTED_PARAMS__'] = None\n"
+                "        raise\n"
+                "# ==============================================\n\n"
+            )
+            program = capture_code + program
+            program = re.sub(r"from\s+scipy\.optimize\s+import\s+minimize", "minimize = __sim_capture_minimize", program)
+            program = re.sub(r"\bscipy\.optimize\.minimize\b", "__sim_capture_minimize", program)
             # optimize the code (decorate function_to_run with @numba.jit())
             if numba_accelerate:
                 program = evaluator_accelerate.add_numba_decorator(
@@ -204,6 +226,11 @@ class LocalSandbox(Sandbox):
             exec(program, all_globals_namespace)
             function_to_run = all_globals_namespace[function_to_run]
             results = function_to_run(dataset)
+            # 捕获拟合参数
+            try:
+                self._last_fitted_params = all_globals_namespace.get('__FITTED_PARAMS__', None)
+            except Exception:
+                self._last_fitted_params = None
             
             if not isinstance(results, (int, float)):
                 result_queue.put((None, False))
@@ -276,6 +303,13 @@ class Evaluator:
         evaluate_time = time.time() - time_reset
 
         if scores_per_test:
+            # 将拟合参数挂到函数对象，便于 Profiler/外部读取
+            try:
+                fitted = getattr(self._sandbox, '_last_fitted_params', None)
+                if fitted is not None:
+                    new_function.fitted_params = fitted
+            except Exception:
+                pass
             self._database.register_program(
                 new_function,
                 island_id,
