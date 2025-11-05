@@ -1,4 +1,6 @@
 logs
+exps
+*.pyc
 *.pyc
 llm.config
 *.config

@@ -64,7 +64,7 @@ Run with:
 python main.py --llm_config llm.config \
                --problem_name [PROBLEM_NAME] \
                --spec_path [SPEC_PATH] \
-               --log_path [LOG_PATH]
+               --exp_path ./exps --exp_name [EXP_NAME]
 ```
 
 * `problem_name` refers to the target problem and dataset in [data/](./data)
@@ -82,6 +82,20 @@ This repository now uses API-only client. Use the configuration-based command ab
 ## Specifications
 
 Specifications in [specs/](./specs) use NumPy-based templates with SciPy BFGS optimizer. Torch-based templates have been removed in this version to simplify dependencies.
+
+Dynamic specification (CSV + background):
+
+```
+python main.py --llm_config llm.config \
+               --data_csv /path/to/your.csv \
+               --background "Your domain background here." \
+               --exp_path ./exps --exp_name your_exp_dynamic
+```
+
+Notes:
+- CSV must have headers; first n-1 columns are feature names; last column is the target name.
+- The dynamic spec will be constructed from the CSV headers and the provided background using NumPy template with SciPy-BFGS.
+- The generated spec will also be written to disk at `[exp_path]/[exp_name]/spec_dynamic.txt`.
 
 
 ## Configuration 
