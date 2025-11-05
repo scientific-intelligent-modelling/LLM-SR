@@ -45,6 +45,8 @@ class Function:
     global_sample_nums: int | None = None  
     sample_time: float | None = None  
     evaluate_time: float | None = None  
+    # 额外记录：优化得到的参数（若存在）
+    params: list[float] | None = None  
 
     def __str__(self) -> str:
         return_type = f' -> {self.return_type}' if self.return_type else ''

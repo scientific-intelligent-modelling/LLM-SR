@@ -55,10 +55,13 @@ class Profiler:
         sample_order = sample_order if sample_order is not None else 0
         function_str = str(programs)
         score = programs.score
+        params = programs.params
         content = {
             'sample_order': sample_order,
             'function': function_str,
-            'score': score
+            'score': score,
+            # 可选：参数，如存在则写入
+            'params': params
         }
         path = os.path.join(self._json_dir, f'samples_{sample_order}.json')
         with open(path, 'w') as json_file:

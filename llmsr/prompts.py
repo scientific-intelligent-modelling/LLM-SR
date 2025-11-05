@@ -93,6 +93,8 @@ from scipy.optimize import minimize
 # Initialize parameters
 MAX_NPARAMS = {max_params}
 params = [1.0]*MAX_NPARAMS
+# 全局变量用于在沙箱中读取 BFGS 结果参数
+BFGS_PARAMS = None
 
 @evaluate.run
 def evaluate(data: dict) -> float:
@@ -105,6 +107,12 @@ def evaluate(data: dict) -> float:
         return np.mean((y_pred - outputs) ** 2)
 
     result = minimize(loss, [1.0]*MAX_NPARAMS, method='BFGS')
+    # 侧写 BFGS 参数到全局，供沙箱回传
+    global BFGS_PARAMS
+    try:
+        BFGS_PARAMS = result.x
+    except Exception:
+        BFGS_PARAMS = None
     loss_val = result.fun
     if np.isnan(loss_val) or np.isinf(loss_val):
         return None

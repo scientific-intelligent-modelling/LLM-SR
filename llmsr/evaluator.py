@@ -142,7 +142,7 @@ class LocalSandbox(Sandbox):
 
 
     def run(self, program: str, function_to_run: str, function_to_evolve: str, 
-        inputs: Any, test_input: str, timeout_seconds: int, **kwargs) -> tuple[Any, bool]:
+        inputs: Any, test_input: str, timeout_seconds: int, **kwargs) -> tuple[Any, bool] | tuple[Any, bool, dict]:
         """
         Execute the given program sample and return its score and success status.
         
@@ -204,11 +204,23 @@ class LocalSandbox(Sandbox):
             exec(program, all_globals_namespace)
             function_to_run = all_globals_namespace[function_to_run]
             results = function_to_run(dataset)
+            # 读取 evaluate() 写入的全局参数（若存在）
+            extras = {}
+            try:
+                bfgs_params = all_globals_namespace.get('BFGS_PARAMS', None)
+                if bfgs_params is not None:
+                    try:
+                        extras['params'] = list(bfgs_params)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
             
             if not isinstance(results, (int, float)):
                 result_queue.put((None, False))
                 return
-            result_queue.put((results, True))
+            # 返回三元组：分数、是否成功、附加信息
+            result_queue.put((results, True, extras))
             
         # if raise any exception, execution is failed
         except Exception as e:
@@ -262,16 +274,26 @@ class Evaluator:
         time_reset = time.time()
         
         for current_input in self._inputs:
-            test_output, runs_ok = self._sandbox.run(
+            run_results = self._sandbox.run(
                 program, self._function_to_run, self._function_to_evolve, self._inputs, current_input,
                 self._timeout_seconds
             )
+            extras = None
+            if isinstance(run_results, tuple) and len(run_results) == 3:
+                test_output, runs_ok, extras = run_results
+            else:
+                test_output, runs_ok = run_results  # type: ignore
 
             if runs_ok and not _calls_ancestor(program, self._function_to_evolve) and test_output is not None:
                 if not isinstance(test_output, (int, float)):
                     print(f'Error: test_output is {test_output}')
                     raise ValueError('@function.run did not return an int/float score.')
                 scores_per_test[current_input] = test_output
+                if extras and isinstance(extras, dict) and 'params' in extras:
+                    try:
+                        new_function.params = list(extras['params'])
+                    except Exception:
+                        pass
 
         evaluate_time = time.time() - time_reset
 

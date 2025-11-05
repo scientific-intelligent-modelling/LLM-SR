@@ -8,6 +8,8 @@ import numpy as np
 #Initialize parameters
 MAX_NPARAMS = 10
 PRAMS_INIT = [1.0]*MAX_NPARAMS
+# 全局：用于回传 BFGS 参数
+BFGS_PARAMS = None
 
 
 @evaluate.run
@@ -26,6 +28,12 @@ def evaluate(data: dict) -> float:
 
     loss_partial = lambda params: loss(params)
     result = minimize(loss_partial, [1.0]*MAX_NPARAMS, method='BFGS')
+    # 侧写 BFGS 参数
+    global BFGS_PARAMS
+    try:
+        BFGS_PARAMS = result.x
+    except Exception:
+        BFGS_PARAMS = None
     
     # Return evaluation score
     optimized_params = result.x
