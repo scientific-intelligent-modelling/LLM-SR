@@ -25,7 +25,4 @@
 
 
 
-################ EXAMPLE RUNS WITH TORCH OPTIMIZER (API) ################
-
-
-# python main.py --llm_config llm.config --problem_name oscillator2 --spec_path ./specs/specification_oscillator2_torch.txt --log_path ./logs/oscillator2_api_torch
+################ (Torch optimizer examples removed) ################

@@ -79,11 +79,9 @@ This repository now uses API-only client. Use the configuration-based command ab
 
 
 
-## Runs with Torch Hypothesis Optimizer
+## Specifications
 
-Most specifications in [specs/](./specs) use equation program skeleton in `numpy` templates with `scipy BFGS` optimizer. LLM-SR can also leverage direct and differentiable optimizers for equation discovery. We provide specifications for the Oscillation 2 example using `torch` templates with `Adam` optimizer [here](./specs/specification_oscillator2_torch.txt).
-
-Note: We observed slightly better performance from `numpy+BFGS` compared to `torch+Adam`, mainly due to better proficiency of current LLM backbones in numpy generation.
+Specifications in [specs/](./specs) use NumPy-based templates with SciPy BFGS optimizer. Torch-based templates have been removed in this version to simplify dependencies.
 
 
 ## Configuration 

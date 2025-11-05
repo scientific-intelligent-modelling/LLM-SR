@@ -3,7 +3,6 @@ import os
 import json
 from argparse import ArgumentParser
 import numpy as np
-import torch
 import pandas as pd
 
 import llm
@@ -73,9 +72,6 @@ if __name__ == '__main__':
     data = np.array(df)
     X = data[:, :-1]
     y = data[:, -1].reshape(-1)
-    if 'torch' in args.spec_path:
-        X = torch.Tensor(X)
-        y = torch.Tensor(y)
     data_dict = {'inputs': X, 'outputs': y}
     dataset = {'data': data_dict} 
     
