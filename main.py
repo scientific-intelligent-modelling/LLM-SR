@@ -29,6 +29,8 @@ parser.add_argument('--run_id', type=int, default=1)
 parser.add_argument('--data_csv', type=str, default=None, help='CSV 路径：首行表头，前 n-1 列为特征，最后一列为目标')
 parser.add_argument('--background', type=str, default='', help='问题背景描述，将写入动态规格')
 parser.add_argument('--max_params', type=int, default=10, help='规格中可优化参数个数（MAX_NPARAMS）')
+parser.add_argument('--iterations', type=int, default=2500, help='搜索轮数（每轮生成 samples_per_iteration 个候选，默认 2500 轮）')
+parser.add_argument('--samples_per_iteration', type=int, default=4, help='每轮生成的候选数量（默认 4）')
 args = parser.parse_args()
 
 
@@ -37,8 +39,14 @@ args = parser.parse_args()
 if __name__ == '__main__':
     # Load config and parameters
     class_config = config_mod.ClassConfig(llm_class=sampler.LocalLLM, sandbox_class=evaluator.LocalSandbox)
-    cfg = config_mod.Config()
-    global_max_sample_num = 10000 
+    # 使用命令行参数覆盖 samples_per_prompt（其余参数用默认值）
+    cfg = config_mod.Config(samples_per_prompt=args.samples_per_iteration)
+    # 全局最大样本数 = 轮数 * 每轮候选数
+    global_max_sample_num = int(max(1, args.iterations)) * int(max(1, args.samples_per_iteration))
+    logging.info(
+        'sampling plan: iterations=%d, samples_per_iteration=%d, max_samples=%d',
+        int(max(1, args.iterations)), int(max(1, args.samples_per_iteration)), global_max_sample_num
+    )
 
     # Build a single LLM client from config file (API-only)
     client = None

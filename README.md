@@ -1,56 +1,31 @@
 # `LLM-SR`: Scientific Equation Discovery and Symbolic Regression via Programming with LLMs
 
-[![Paper](https://img.shields.io/badge/arXiv-2404.18400-b31b1b.svg)](https://arxiv.org/abs/2404.18400)
-[![Data](https://img.shields.io/github/directory-file-count/deep-symbolic-mathematics/LLM-SR/data?label=Data%20Files&style=flat-square)](./data/)
-![GitHub Repo stars](https://img.shields.io/github/stars/deep-symbolic-mathematics/LLM-SR?style=social)
+**原论文链接:** ：https://arxiv.org/abs/2404.18400
+
+**原项目地址:** https://github.com/deep-symbolic-mathematics/LLM-SR
+
+该项目进行了修改，对原项目的使用方式进行了大幅度修改，核心功能部分并未做改动
 
 
-Official Implementation of paper [LLM-SR: Scientific Equation Discovery via Programming with Large Language Models](https://arxiv.org/abs/2404.18400) **(ICLR 2025 Oral)**.
+依赖安装
+--------
 
-
-## Updates
-- Our recent more comprehensive benchmark [LLM-SRBench: A New Benchmark for Scientific Equation Discovery with Large Language Models](https://arxiv.org/abs/2504.10415) **(to appear at ICML 2025 as Oral)** is released following this work to effectively test LLM-based scientific equation discovery methods beyond memorization. Check out the benchmark data on [huggingface](https://huggingface.co/datasets/nnheui/llm-srbench) and evaluation codes [here](https://github.com/deep-symbolic-mathematics/llm-srbench).
-
-
-
-## Overview
-In this paper, we introduce **LLM-SR**, a novel approach for scientific equation discovery and symbolic regression that leverages strengths of Large Language Models (LLMs). LLM-SR combines **LLMs' scientific knowledge** and **code generation** capabilities with **evolutionary search** to discover accurate and interpretable equations from data. The method represents equations as program skeletons, allowing for flexible hypothesis generation guided by domain-specific priors. Experiments on custom benchmark problems across physics, biology, and materials science demonstrate LLM-SR's superior performance compared to state-of-the-art symbolic regression methods, particularly in out-of-domain generalization. The paper also highlights the limitations of common benchmarks and proposes new, challenging datasets for evaluating LLM-based equation discovery methods.
-
-
-![LLMSR-viz](./images/LLMSR.jpg)
-
-## Installation
-
-To run the code, create a conda environment and install the dependencies provided in the `requirements.txt` or `environment.yml`:
-
-```
-conda create -n llmsr python=3.11.7
-conda activate llmsr
+```bash
 pip install -r requirements.txt
 ```
 
-or 
-
-```
-conda env create -f environment.yml
-conda activate llmsr
-```
-
-Note: Requires Python ≥ 3.9
+- 仅依赖 NumPy、SciPy、Pandas 等。已移除 torch/transformers 等大包。
 
 
-## Datasets
-Benchmark datasets studied in this paper are provided in the [data/](./data) directory. For details on datasets and generation settings, please refer to [paper](https://arxiv.org/abs/2404.18400).
+LLM 配置（llm.config）
+----------------------
 
+根目录提供 `llm.config`（JSON），用于配置大模型访问与采样参数：
 
-## Configure API Runs (Recommended)
-
-Create a configuration file (e.g., `llm.config`) in project root:
-
-```
+```json
 {
   "host": "api.bltcy.ai",
-  "api_key": "<YOUR_API_KEY>",
+  "api_key": "xxx",
   "model": "bltcy/gpt-3.5-turbo",
   "max_tokens": 1024,
   "temperature": 0.6,
@@ -58,72 +33,168 @@ Create a configuration file (e.g., `llm.config`) in project root:
 }
 ```
 
-Run with:
+说明：
+
+- `api_key` 请替换为真实密钥，否则会报“未提供令牌”。
+- `model` 建议使用 `provider/model` 形式（如 `bltcy/gpt-3.5-turbo`）。 目前支持Deepseek，SiliconFlow，柏拉图，Ollama，具体支持列表请查看`llm.py`
+- 如需切换模型，请直接修改 `llm.config` 的相应字段，温度等配置信息也在此处进行修改。
+- 运行时每个任务实例化一个 LLM Client，全程复用；并行任务互不影响。
+
+
+快速开始
+------------------------
+
+CSV 需带表头：前 n-1 列为特征，最后一列为因变量。可用迭代与每轮候选数控制搜索规模。
+
+```bash
+python3 main.py \
+--problem_name oscillator1 \
+--llm_config llm.config \
+ --data_csv ./data/oscillator1/train.csv \
+ --background 'Find the mathematical function skeleton that represents acceleration in a damped nonlinear oscillator system with driving force, given data on position, and velocity.' 
 
 ```
-python main.py --llm_config llm.config \
-               --problem_name [PROBLEM_NAME] \
-               --spec_path [SPEC_PATH] \
-               --exp_path ./exps --exp_name [EXP_NAME]
+
+运行后将在 `results/oscillator1_时间戳/` 下生成所有产物。
+
+可选调参示例：
+
+```bash
+# 迭代轮数与每轮候选数（近似：最大采样数 = iterations * num_samplers * samples_per_iteration）
+python3 main.py \
+  --problem_name oscillator1 \
+  --llm_config llm.config \
+  --data_csv ./data/oscillator1/train.csv \
+  --iterations 50 \
+  --samples_per_iteration 8
 ```
 
-* `problem_name` refers to the target problem and dataset in [data/](./data)
-* `spec_path` refers to the initial prompt specification file path in [specs/](./specs)
-* Available problem names: `oscillator1`, `oscillator2`, `bactgrow`, `stressstrain`
-* For more example scripts, check `run_llmsr.sh`.
 
+批量示例（example.sh）
+----------------------
 
+根目录的 `example.sh` 给出 12 个数据集的一键命令，已内置对应背景：
 
-## API Runs
-This repository now uses API-only client. Use the configuration-based command above. `--use_api`/`--api_model` are deprecated.
-
-
-
-## Specifications
-
-Specifications in [specs/](./specs) use NumPy-based templates with SciPy BFGS optimizer. Torch-based templates have been removed in this version to simplify dependencies.
-
-Dynamic specification (CSV + background):
-
-```
-python main.py --llm_config llm.config \
-               --data_csv /path/to/your.csv \
-               --background "Your domain background here." \
-               --exp_path ./exps --exp_name your_exp_dynamic
+```bash
+bash example.sh
 ```
 
-Notes:
-- CSV must have headers; first n-1 columns are feature names; last column is the target name.
-- The dynamic spec will be constructed from the CSV headers and the provided background using NumPy template with SciPy-BFGS.
-- The generated spec will also be written to disk at `[exp_path]/[exp_name]/spec_dynamic.txt`.
+
+结果产物与目录结构
+--------------------
+
+以 `results/oscillator1_20250101-120000/` 为例：
+
+- `run.out`, `run.err`：标准输出/错误输出。
+- `spec_dynamic.txt`：本次运行的动态 spec（便于复现）。
+- `experiences.json`：采样过程中的“经验/总结”。
+- `residual_analyze.json`：残差分析结果。
+- `samples/`：每次评分的样本 JSON，形如 `samples_32.json`，包含：
+  - `score`：分数（越大越好）
+  - `function`：完整函数源码（含 def、docstring、body）
+  - `params`：BFGS 优化得到的参数（若成功）
 
 
-## Configuration 
+如何找到“当前最优方程”
+------------------------
 
-The above commands use default pipeline parameters. To change parameters for experiments, refer to [config.py](./llmsr/config.py).
+扫描 `samples/` 下分数最高的样本即可：
+
+```bash
+python3 - << 'PY2'
+import json, glob, os
+results_root = "results/oscillator1_20250101-120000"  # 改为你的目录
+best = None
+for p in glob.glob(os.path.join(results_root, "samples", "samples_*.json")):
+    try:
+        with open(p, "r", encoding="utf-8") as f:
+            d = json.load(f)
+        s = d.get("score")
+        if s is None:
+            continue
+        if best is None or s > best[0]:
+            best = (s, p, d.get("function",""), d.get("params"))
+    except Exception:
+        continue
+if best is None:
+    print("没有找到有效样本。")
+else:
+    score, path, func, params = best
+    print(f"[BEST] score={score}
+file={path}
+params={params}
+
+function:
+{func}")
+PY2
+```
+
+
+可配置项与自定义
+------------------
+
+- `llm.config`：LLM 访问与采样参数（host/api_key/model/max_tokens/temperature/top_p）。
+- `drsr_420/config.py`：采样与评估资源配置（`samples_per_prompt`、`evaluate_timeout_seconds`、并行数等）。
+- 运行时可通过 `--samples_per_iteration` 覆盖每轮候选数量（内部映射为 `samples_per_prompt`）。
+- 运行时可通过 `--iterations` 控制“迭代轮数”（最大采样数 = iterations × num_samplers × samples_per_iteration）。
+- `drsr_420/evaluate_on_problems.py`：BFGS 拟合与指标（返回 `(score, result_matrix, optimized_params)`）。
+- `drsr_420/prompt_config.py` 与 `PromptContext`：采样提示词的模板与动态渲染（变量名、背景）。
+
+
+提示词与背景
+--------------
+提示词模板如下：
+``` text
+Find the mathematical function skeleton that represents {PROBLEM}.
+
+Background:
+{BACKGROUND}
+
+Variables:
+- Independents: {FEATURE_DOC}
+- Dependent: {DEPENDENT}
+```
+
+显然在背景里面进行进行知识注入是极好的，并且最好可以精确到每一个因变量的含义
+如： col1 为电场强度单位是(N/C)  col2为电荷数单位库仑(C)
+
+- 背景：由 `--background` 传入，并写入动态 spec 顶部注释与 equation docstring，同时注入采样提示。
+- 变量名：从 CSV 表头解析（前 n-1 列为自变量名，最后一列为因变量名）。
 
 
 
-## Citation
-Read our [paper](https://arxiv.org/abs/2404.18400) for more information about the setup (or contact us ☺️)). If you find our paper or the repo helpful, please cite us with
-<pre>
+仓库结构
+--------
+- `main.py`：入口（CSV 动态模式）。
+- `llm.config`：LLM 访问与采样参数。
+- `example.sh`：13 个数据集的运行示例。
+- `drsr_420/`：核心模块
+  - `pipeline.py`：调度 Evaluator/Sampler，注入 LLM Client，触发初次数据分析。
+  - `sampler.py`：采样器（全程使用注入的 Client 发起 LLM 请求）。
+  - `evaluator.py`：运行候选方程、BFGS 拟合与打分。
+  - `evaluate_on_problems.py`：BFGS 与评分逻辑（返回拟合参数）。
+  - `buffer.py`：经验缓冲（多岛与聚类抽样）。
+  - `code_manipulation.py`：AST 解析与函数/程序拼装、调用重命名等。
+  - `prompt_config.py`：提示词模板与 `PromptContext`。
+  - `profile.py`：轻量记录（写 `samples/*.json`），已移除 TensorBoard。
+- `specs/`：历史静态 spec（动态模式无需）。
+- `results/{problem}_{timestamp}/`：本次运行产物。
+
+引用
+----
+
+如果本项目对您的研究有所帮助，欢迎引用下面论文：
+
+```bibtex
 @article{shojaee2024llm,
   title={Llm-sr: Scientific equation discovery via programming with large language models},
   author={Shojaee, Parshin and Meidani, Kazem and Gupta, Shashank and Farimani, Amir Barati and Reddy, Chandan K},
   journal={arXiv preprint arXiv:2404.18400},
   year={2024}
 }
-</pre>
+```
 
+**论文链接:** ：https://arxiv.org/abs/2404.18400
 
-## License 
-This repository is licensed under MIT licence.
+**项目地址:** https://github.com/deep-symbolic-mathematics/LLM-SR
 
-
-
-This work is built on top of other open source projects, including [FunSearch](https://github.com/google-deepmind/funsearch), [PySR](https://github.com/MilesCranmer/PySR), and [Neural Symbolic Regression that scales](https://github.com/SymposiumOrganization/NeuralSymbolicRegressionThatScales). We thank the original contributors of these works for open-sourcing their valuable source codes. 
-
-
-
-## Contact Us
-For any questions or issues, you are welcome to open an issue in this repo, or contact us at parshinshojaee@vt.edu, and mmeidani@andrew.cmu.edu .
