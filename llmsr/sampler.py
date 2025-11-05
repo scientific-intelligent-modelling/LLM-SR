@@ -24,10 +24,7 @@ import time
 from llmsr import evaluator
 from llmsr import buffer
 from llmsr import config as config_lib
-import requests
 import json
-import http.client
-import os
 
 
 
@@ -58,11 +55,12 @@ class Sampler:
             config: config_lib.Config,
             max_sample_nums: int | None = None,
             llm_class: Type[LLM] = LLM,
+            llm_client=None,
     ):
         self._samples_per_prompt = samples_per_prompt
         self._database = database
         self._evaluators = evaluators
-        self._llm = llm_class(samples_per_prompt)
+        self._llm = llm_class(samples_per_prompt, client=llm_client)
         self._max_sample_nums = max_sample_nums
         self.config = config
 
@@ -77,7 +75,7 @@ class Sampler:
             prompt = self._database.get_prompt()
             
             reset_time = time.time()
-            samples = self._llm.draw_samples(prompt.code,self.config)
+            samples = self._llm.draw_samples(prompt.code, self.config)
             sample_time = (time.time() - reset_time) / self._samples_per_prompt
 
             # This loop can be executed in parallel on remote evaluator machines.
@@ -108,7 +106,7 @@ class Sampler:
 
 
 
-def _extract_body(sample: str, config: config_lib.Config) -> str:
+def _extract_body(sample: str) -> str:
     """
     Extract the function body from a response sample, removing any preceding descriptions
     and the function signature. Preserves indentation.
@@ -141,21 +139,9 @@ def _extract_body(sample: str, config: config_lib.Config) -> str:
             break
     
     if find_def_declaration:
-        # for gpt APIs
-        if config.use_api:
-            code = ''
-            for line in lines[func_body_lineno + 1:]:
-                code += line + '\n'
-        
-        # for mixtral
-        else:
-            code = ''
-            indent = '    '
-            for line in lines[func_body_lineno + 1:]:
-                if line[:4] != indent:
-                    line = indent + line
-                code += line + '\n'
-        
+        code = ''
+        for line in lines[func_body_lineno + 1:]:
+            code += line + '\n'
         return code
     
     return sample
@@ -163,7 +149,7 @@ def _extract_body(sample: str, config: config_lib.Config) -> str:
 
 
 class LocalLLM(LLM):
-    def __init__(self, samples_per_prompt: int, batch_inference: bool = True, trim=True) -> None:
+    def __init__(self, samples_per_prompt: int, batch_inference: bool = True, trim=True, client=None) -> None:
         """
         Args:
             batch_inference: Use batch inference when sample equation program skeletons. The batch size equals to the samples_per_prompt.
@@ -174,107 +160,33 @@ class LocalLLM(LLM):
         instruction_prompt = ("You are a helpful assistant tasked with discovering mathematical function structures for scientific systems. \
                              Complete the 'equation' function below, considering the physical meaning and relationships of inputs.\n\n")
         self._batch_inference = batch_inference
-        self._url = url
         self._instruction_prompt = instruction_prompt
         self._trim = trim
+        self._client = client
 
 
     def draw_samples(self, prompt: str, config: config_lib.Config) -> Collection[str]:
-        """Returns multiple equation program skeleton hypotheses for the given `prompt`."""
-        if config.use_api:
-            return self._draw_samples_api(prompt, config)
-        else:
-            return self._draw_samples_local(prompt, config)
+        """返回多条方程程序骨架假设（仅 API 客户端）。"""
+        return self._draw_samples_client(prompt)
 
 
-    def _draw_samples_local(self, prompt: str, config: config_lib.Config) -> Collection[str]:    
-        # instruction
-        prompt = '\n'.join([self._instruction_prompt, prompt])
-        while True:
-            try:
-                all_samples = []
-                # response from llm server
-                if self._batch_inference:
-                    response = self._do_request(prompt)
-                    for res in response:
-                        all_samples.append(res)
-                else:
-                    for _ in range(self._samples_per_prompt):
-                        response = self._do_request(prompt)
-                        all_samples.append(response)
+    def _draw_samples_client(self, prompt: str) -> Collection[str]:
+        if self._client is None:
+            raise RuntimeError("未注入 LLM 客户端实例：请在 main.py 中通过 --llm_config 提供配置")
 
-                # trim equation program skeleton body from samples
-                if self._trim:
-                    all_samples = [_extract_body(sample, config) for sample in all_samples]
-                
-                return all_samples
-            except Exception:
-                continue
+        full_prompt = '\n'.join([self._instruction_prompt, prompt])
+        messages = [{"role": "user", "content": full_prompt}]
 
-
-    def _draw_samples_api(self, prompt: str, config: config_lib.Config) -> Collection[str]:
-        all_samples = []
-        prompt = '\n'.join([self._instruction_prompt, prompt])
-        
+        all_samples: list[str] = []
         for _ in range(self._samples_per_prompt):
             while True:
                 try:
-                    conn = http.client.HTTPSConnection("api.openai.com")
-                    payload = json.dumps({
-                        "max_tokens": 512,
-                        "model": config.api_model,
-                        "messages": [
-                            {
-                                "role": "user",
-                                "content": prompt
-                            }
-                        ]
-                    })
-                    headers = {
-                        'Authorization': f"Bearer {os.environ['API_KEY']}",
-                        'User-Agent': 'Apifox/1.0.0 (https://apifox.com)',
-                        'Content-Type': 'application/json'
-                    }
-                    conn.request("POST", "/v1/chat/completions", payload, headers)
-                    res = conn.getresponse()
-                    data = json.loads(res.read().decode("utf-8"))
-                    response = data['choices'][0]['message']['content']
-                    
+                    result = self._client.chat(messages)
+                    content = (result or {}).get('content', '') or ''
                     if self._trim:
-                        response = _extract_body(response, config)
-                    
-                    all_samples.append(response)
+                        content = _extract_body(content)
+                    all_samples.append(content)
                     break
-
                 except Exception:
                     continue
-        
         return all_samples
-    
-    
-    def _do_request(self, content: str) -> str:
-        content = content.strip('\n').strip()
-        # repeat the prompt for batch inference
-        repeat_prompt: int = self._samples_per_prompt if self._batch_inference else 1
-        
-        data = {
-            'prompt': content,
-            'repeat_prompt': repeat_prompt,
-            'params': {
-                'do_sample': True,
-                'temperature': None,
-                'top_k': None,
-                'top_p': None,
-                'add_special_tokens': False,
-                'skip_special_tokens': True,
-            }
-        }
-        
-        headers = {'Content-Type': 'application/json'}
-        response = requests.post(self._url, data=json.dumps(data), headers=headers)
-        
-        if response.status_code == 200: #Server status code 200 indicates successful HTTP request! 
-            response = response.json()["content"]
-            
-            return response if self._batch_inference else response[0]
-

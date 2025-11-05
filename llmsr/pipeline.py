@@ -89,12 +89,18 @@ def main(
     evaluators[0].analyse(initial, island_id=None, version_generated=None, profiler=profiler)
 
     # Set global max sample nums.
-    samplers = [sampler.Sampler(database, evaluators, 
-                                config.samples_per_prompt, 
-                                max_sample_nums=max_sample_nums, 
-                                llm_class=class_config.llm_class,
-                                config = config) 
-                                for _ in range(config.num_samplers)]
+    samplers = [
+        sampler.Sampler(
+            database,
+            evaluators,
+            config.samples_per_prompt,
+            config=config,
+            max_sample_nums=max_sample_nums,
+            llm_class=class_config.llm_class,
+            llm_client=kwargs.get('llm_client')
+        )
+        for _ in range(config.num_samplers)
+    ]
 
     # This loop can be executed in parallel on remote sampler machines. As each
     # sampler enters an infinite loop, without parallelization only the first
