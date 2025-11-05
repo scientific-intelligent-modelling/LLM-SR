@@ -7,10 +7,6 @@ import sys
 import io
 import atexit
 import logging
-try:
-    from absl import logging as absl_logging
-except Exception:
-    absl_logging = None
 import numpy as np
 import pandas as pd
 
@@ -115,31 +111,18 @@ if __name__ == '__main__':
         sys.stdout = _Tee(sys.stdout, out_fp)
         sys.stderr = _Tee(sys.stderr, err_fp)
 
-        # 调整已存在的 logging/absl 处理器，将其输出流指向新的 sys.stderr
+        # 配置标准库 logging：时间戳 + 级别 + 模块名；输出到新的 sys.stderr（_Tee）
         try:
-            for logger_name in (None, 'absl'):
-                logger = logging.getLogger(logger_name) if logger_name else logging.getLogger()
-                for handler in list(getattr(logger, 'handlers', [])):
-                    # 优先使用 setStream 以兼容不同 Handler 类型
-                    if hasattr(handler, 'setStream'):
-                        handler.setStream(sys.stderr)
-                    elif hasattr(handler, 'stream'):
-                        handler.stream = sys.stderr
-        except Exception:
-            pass
-
-        # 替换 absl 的 handler，使用普通 Python 日志格式（带时间戳），避免 Google 风格前缀/线程号/方括号
-        try:
-            absl_logger = logging.getLogger('absl')
-            for h in list(absl_logger.handlers):
-                absl_logger.removeHandler(h)
-            absl_logger.propagate = False
-            h = logging.StreamHandler(stream=sys.stderr)
-            h.setLevel(logging.INFO)
-            h.setFormatter(logging.Formatter('%(asctime)s %(levelname)s:%(name)s:%(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
-            absl_logger.addHandler(h)
-            absl_logger.setLevel(logging.INFO)
-            absl_logger.info('logging initialized; exp dir=%s', results_dir)
+            root = logging.getLogger()
+            # 清理现有 handler（避免重复与不同格式混杂）
+            for h in list(root.handlers):
+                root.removeHandler(h)
+            sh = logging.StreamHandler(stream=sys.stderr)
+            sh.setLevel(logging.INFO)
+            sh.setFormatter(logging.Formatter('%(asctime)s %(levelname)s:%(name)s:%(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
+            root.addHandler(sh)
+            root.setLevel(logging.INFO)
+            logging.info('logging initialized; exp dir=%s', results_dir)
         except Exception:
             pass
 
