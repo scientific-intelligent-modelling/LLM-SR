@@ -15,6 +15,8 @@ from llmsr import evaluator
 parser = ArgumentParser()
 parser.add_argument('--port', type=int, default=None)
 parser.add_argument('--llm_config', type=str, default=None)
+parser.add_argument('--data_csv', type=str, default=None)
+parser.add_argument('--background', type=str, default=None)
 parser.add_argument('--spec_path', type=str)
 parser.add_argument('--log_path', type=str, default="./logs/oscillator1")
 parser.add_argument('--problem_name', type=str, default="oscillator1")

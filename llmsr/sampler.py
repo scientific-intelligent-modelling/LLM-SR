@@ -24,6 +24,7 @@ import time
 from llmsr import evaluator
 from llmsr import buffer
 from llmsr import config as config_lib
+from llmsr import prompts
 
 
 
@@ -155,8 +156,7 @@ class LocalLLM(LLM):
         """
         super().__init__(samples_per_prompt)
 
-        instruction_prompt = ("You are a helpful assistant tasked with discovering mathematical function structures for scientific systems. \
-                             Complete the 'equation' function below, considering the physical meaning and relationships of inputs.\n\n")
+        instruction_prompt = prompts.INSTRUCTION_PROMPT
         self._batch_inference = batch_inference
         self._instruction_prompt = instruction_prompt
         self._trim = trim
@@ -172,8 +172,7 @@ class LocalLLM(LLM):
         if self._client is None:
             raise RuntimeError("未注入 LLM 客户端实例：请在 main.py 中通过 --llm_config 提供配置")
 
-        full_prompt = '\n'.join([self._instruction_prompt, prompt])
-        messages = [{"role": "user", "content": full_prompt}]
+        messages = prompts.build_messages(prompt)
 
         all_samples: list[str] = []
         for _ in range(self._samples_per_prompt):
