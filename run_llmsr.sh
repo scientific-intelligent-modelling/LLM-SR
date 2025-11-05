@@ -1,51 +1,31 @@
-################ LLMSR with API ################
+################ LLMSR with API (via llm.config) ################
 
 # oscillation 1
-# python main.py --use_api True --api_model "gpt-3.5-turbo" --problem_name oscillator1 --spec_path ./specs/specification_oscillator1_numpy.txt --log_path ./logs/oscillator1_gpt3.5
-# python main.py --use_api True --api_model "gpt-4o" --problem_name oscillator1 --spec_path ./specs/specification_oscillator1_numpy.txt --log_path ./logs/oscillator1_gpt4o
+# python main.py --llm_config llm.config --problem_name oscillator1 --spec_path ./specs/specification_oscillator1_numpy.txt --log_path ./logs/oscillator1_api
 
 
 # oscillation 2
-# python main.py --use_api True --api_model "gpt-3.5-turbo" --problem_name oscillator2 --spec_path ./specs/specification_oscillator2_numpy.txt --log_path ./logs/oscillator2_gpt3.5
-# python main.py --use_api True --api_model "gpt-4o" --problem_name oscillator2 --spec_path ./specs/specification_oscillator2_numpy.txt --log_path ./logs/oscillator2_gpt4o
+# python main.py --llm_config llm.config --problem_name oscillator2 --spec_path ./specs/specification_oscillator2_numpy.txt --log_path ./logs/oscillator2_api
 
 
 # bacterial-growth
-# python main.py --use_api True --api_model "gpt-3.5-turbo" --problem_name bactgrow --spec_path ./specs/specification_bactgrow_numpy.txt --log_path ./logs/bactgrow_gpt3.5
-# python main.py --use_api True --api_model "gpt-4o" --problem_name oscillator2 --spec_path ./specs/specification_oscillator2_numpy.txt --log_path ./logs/bactgrow_gpt4o
+# python main.py --llm_config llm.config --problem_name bactgrow --spec_path ./specs/specification_bactgrow_numpy.txt --log_path ./logs/bactgrow_api
 
 
 # stress-strain
-# python main.py --use_api True --api_model "gpt-3.5-turbo" --problem_name stressstrain --spec_path ./specs/specification_stressstrain_numpy.txt --log_path ./logs/stressstrain_gpt3.5
-# python main.py --use_api True --api_model "gpt-4o" --problem_name stressstrain --spec_path ./specs/specification_stressstrain_numpy.txt --log_path ./logs/stressstrain_gpt4o
+# python main.py --llm_config llm.config --problem_name stressstrain --spec_path ./specs/specification_stressstrain_numpy.txt --log_path ./logs/stressstrain_api
 
 
 
 
 
-################ LLMSR with LOCAL LLM ################
-
-# oscillation 1
-# python main.py --problem_name oscillator1 --spec_path ./specs/specification_oscillator1_numpy.txt --log_path ./logs/oscillator1_local
-
-
-# oscillation 2
-# python main.py --problem_name oscillator2 --spec_path ./specs/specification_oscillator2_numpy.txt --log_path ./logs/oscillator2_local
-
-
-# bacterial-growth
-# python main.py --problem_name bactgrow --spec_path ./specs/specification_bactgrow_numpy.txt --log_path ./logs/bactgrow_local
-
-
-# stress-strain
-# python main.py --problem_name stressstrain --spec_path ./specs/specification_stressstrain_numpy.txt --log_path ./logs/stresstrain_local
+################ (Local LLM section removed) ################
 
 
 
 
 
-################ EXAMPLE RUNS WITH TORCH OPTIMIZER ################
+################ EXAMPLE RUNS WITH TORCH OPTIMIZER (API) ################
 
 
-# python main.py --use_api True --api_model "gpt-3.5-turbo" --problem_name oscillator2 --spec_path ./specs/specification_oscillator2_torch.txt --log_path ./logs/oscillator2_gpt3.5_torch
-# python main.py --problem_name oscillator2 --spec_path ./specs/specification_oscillator2_torch.txt --log_path ./logs/oscillator2_local_torch
+# python main.py --llm_config llm.config --problem_name oscillator2 --spec_path ./specs/specification_oscillator2_torch.txt --log_path ./logs/oscillator2_api_torch

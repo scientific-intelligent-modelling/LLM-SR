@@ -43,71 +43,39 @@ Note: Requires Python ≥ 3.9
 Benchmark datasets studied in this paper are provided in the [data/](./data) directory. For details on datasets and generation settings, please refer to [paper](https://arxiv.org/abs/2404.18400).
 
 
-## Local Runs (Open-Source LLMs)
+## Configure API Runs (Recommended)
 
-### Start the local LLM Server
-
-First, start the local LLM engine from huggingface models by using the `bash run_server.sh` script or running the following command: 
+Create a configuration file (e.g., `llm.config`) in project root:
 
 ```
-cd llm_engine
-
-python engine.py --model_path mistralai/Mixtral-8x7B-Instruct-v0.1 \
-                    --gpu_ids [GPU_ID]  \
-                    --port [PORT_ID] --quantization
+{
+  "host": "api.bltcy.ai",
+  "api_key": "<YOUR_API_KEY>",
+  "model": "bltcy/gpt-3.5-turbo",
+  "max_tokens": 1024,
+  "temperature": 0.6,
+  "top_p": 0.3
+}
 ```
 
-* Set `gpu_ids` and `port` parameters based on your server availability
-
-* Change `model_path` to use a different open-source model from Hugging Face
-
-* `quantization` activates efficient inference of LLM with quantization on GPUs
-
-* Control quantization level with `load_in_4bit` and `load_in_8bit` parameters in [engine.py](./llm_engine/engine.py)
-
-
-
-### Run LLM-SR on Local Server
-After activating the local LLM server, run the LLM-SR framework on your dataset with the `run_llmsr.sh` script or running the following command: 
+Run with:
 
 ```
-python main.py --problem_name [PROBLEM_NAME] \
-                   --spec_path [SPEC_PATH] \
-                   --log_path [LOG_PATH]
+python main.py --llm_config llm.config \
+               --problem_name [PROBLEM_NAME] \
+               --spec_path [SPEC_PATH] \
+               --log_path [LOG_PATH]
 ```
-
-* Update the `port` id in the url in [sampler.py](./llmsr/sampler.py) to match the LLM server port
 
 * `problem_name` refers to the target problem and dataset in [data/](./data)
-
-* `spec_path` refers to the initial prompt specification file path in [spec/](./specs) 
-
-* Available problem names for datasets: `oscillator1`, `oscillator2`, `bactgrow`, `stressstrain`
-
-For more example scripts, check `run_llmsr.sh`. 
+* `spec_path` refers to the initial prompt specification file path in [specs/](./specs)
+* Available problem names: `oscillator1`, `oscillator2`, `bactgrow`, `stressstrain`
+* For more example scripts, check `run_llmsr.sh`.
 
 
 
-## API Runs (Closed LLMs)
-To run LLM-SR with the OpenAI GPT API, use the following command: 
-
-```
-export API_KEY=[YOUR_API_KEY_HERE]
-
-python main.py --use_api True \
-                   --api_model "gpt-3.5-turbo" \
-                   --problem_name [PROBLEM_NAME] \
-                   --spec_path [SPEC_PATH] \
-                   --log_path [LOG_PATH]
-```
-
-* Replace `[YOUR_API_KEY_HERE]` with your actual OpenAI API key to set your API key as an environment variable. 
-
-* `--use_api True`: Enables the use of the OpenAI API instead of local LLMs from Hugging Face
-
-* `--api_model`: Specifies the GPT model to use (e.g., "gpt-3.5-turbo", "gpt-4o")
-
-* `--problem_name`, `--spec_path`, `--log_path`: Set these as in the local runs section
+## API Runs
+This repository now uses API-only client. Use the configuration-based command above. `--use_api`/`--api_model` are deprecated.
 
 
 
