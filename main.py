@@ -3,6 +3,14 @@ import os
 import json
 from argparse import ArgumentParser
 from datetime import datetime
+import sys
+import io
+import atexit
+import logging
+try:
+    from absl import logging as absl_logging
+except Exception:
+    absl_logging = None
 import numpy as np
 import pandas as pd
 
@@ -71,6 +79,79 @@ if __name__ == '__main__':
     exp_name = args.exp_name or default_name
     exp_dir = os.path.join(args.exp_path, exp_name)
     os.makedirs(exp_dir, exist_ok=True)
+
+    # 定义双写代理类：_Tee（将写入同时写到多个底层流，并在 flush 时同步刷新）
+    class _Tee(io.TextIOBase):
+        def __init__(self, *streams):
+            self._streams = [s for s in streams if s is not None]
+            self._enc = getattr(self._streams[0], 'encoding', 'utf-8') if self._streams else 'utf-8'
+
+        @property
+        def encoding(self):
+            return self._enc
+
+        def write(self, s):
+            for st in self._streams:
+                try:
+                    st.write(s)
+                except Exception:
+                    continue
+            self.flush()
+            return len(s)
+
+        def flush(self):
+            for st in self._streams:
+                try:
+                    st.flush()
+                except Exception:
+                    continue
+
+    # 在 exps/{exp} 目录下分别记录标准输出与标准错误（run.out / run.err），并保留控制台输出
+    results_dir = exp_dir  # 统一到实验目录下
+    os.makedirs(results_dir, exist_ok=True)
+    try:
+        out_fp = open(os.path.join(results_dir, 'run.out'), 'w', encoding='utf-8', buffering=1)
+        err_fp = open(os.path.join(results_dir, 'run.err'), 'w', encoding='utf-8', buffering=1)
+        sys.stdout = _Tee(sys.stdout, out_fp)
+        sys.stderr = _Tee(sys.stderr, err_fp)
+
+        # 调整已存在的 logging/absl 处理器，将其输出流指向新的 sys.stderr
+        try:
+            for logger_name in (None, 'absl'):
+                logger = logging.getLogger(logger_name) if logger_name else logging.getLogger()
+                for handler in list(getattr(logger, 'handlers', [])):
+                    # 优先使用 setStream 以兼容不同 Handler 类型
+                    if hasattr(handler, 'setStream'):
+                        handler.setStream(sys.stderr)
+                    elif hasattr(handler, 'stream'):
+                        handler.stream = sys.stderr
+        except Exception:
+            pass
+
+        # 替换 absl 的 handler，使用普通 Python 日志格式（带时间戳），避免 Google 风格前缀/线程号/方括号
+        try:
+            absl_logger = logging.getLogger('absl')
+            for h in list(absl_logger.handlers):
+                absl_logger.removeHandler(h)
+            absl_logger.propagate = False
+            h = logging.StreamHandler(stream=sys.stderr)
+            h.setLevel(logging.INFO)
+            h.setFormatter(logging.Formatter('%(asctime)s %(levelname)s:%(name)s:%(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
+            absl_logger.addHandler(h)
+            absl_logger.setLevel(logging.INFO)
+            absl_logger.info('logging initialized; exp dir=%s', results_dir)
+        except Exception:
+            pass
+
+        def _close_files():
+            for fp in (out_fp, err_fp):
+                try:
+                    fp.close()
+                except Exception:
+                    pass
+        atexit.register(_close_files)
+    except Exception:
+        pass
 
     # Load specification and dataset（支持动态规格 or 旧版静态规格）
     if args.data_csv:
