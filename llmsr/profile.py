@@ -1,4 +1,4 @@
-# profile the experiment with tensorboard
+# 实验采样/评估的简单记录器（去除 TensorBoard 依赖，仅保留 JSON 与控制台输出）
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ from typing import List, Dict
 import logging
 import json
 from llmsr import code_manipulation
-from torch.utils.tensorboard import SummaryWriter
 
 
 class Profiler:
@@ -18,10 +17,10 @@ class Profiler:
             max_log_nums: int | None = None,
     ):
         """
-        Args:
-            log_dir     : folder path for tensorboard log files.
-            pkl_dir     : save the results to a pkl file.
-            max_log_nums: stop logging if exceeding max_log_nums.
+        参数说明：
+            log_dir     : 日志目录（用于保存 samples/*.json）。
+            pkl_dir     : 预留参数（未使用）。
+            max_log_nums: 最多记录条数上限。
         """
         logging.getLogger().setLevel(logging.INFO)
         self._log_dir = log_dir
@@ -38,8 +37,8 @@ class Profiler:
         self._tot_evaluate_time = 0
         self._all_sampled_functions: Dict[int, code_manipulation.Function] = {}
 
-        if log_dir:
-            self._writer = SummaryWriter(log_dir=log_dir)
+        # 去除 TensorBoard 依赖，不再创建 SummaryWriter
+        self._writer = None
 
         self._each_sample_best_program_score = []
         self._each_sample_evaluate_success_program_num = []
@@ -48,34 +47,8 @@ class Profiler:
         self._each_sample_tot_evaluate_time = []
 
     def _write_tensorboard(self):
-        if not self._log_dir:
-            return
-
-        self._writer.add_scalar(
-            'Best Score of Function',
-            self._cur_best_program_score,
-            global_step=self._num_samples
-        )
-        self._writer.add_scalars(
-            'Legal/Illegal Function',
-            {
-                'legal function num': self._evaluate_success_program_num,
-                'illegal function num': self._evaluate_failed_program_num
-            },
-            global_step=self._num_samples
-        )
-        self._writer.add_scalars(
-            'Total Sample/Evaluate Time',
-            {'sample time': self._tot_sample_time, 'evaluate time': self._tot_evaluate_time},
-            global_step=self._num_samples
-        )
-        
-        # Log the function_str
-        self._writer.add_text(
-            'Best Function String',
-            self._cur_best_program_str,
-            global_step=self._num_samples
-        )
+        # 已移除 TensorBoard 功能：保持空实现以兼容调用点
+        return
 
     def _write_json(self, programs: code_manipulation.Function):
         sample_order = programs.global_sample_nums
