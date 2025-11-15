@@ -154,7 +154,7 @@ class LocalSandbox(Sandbox):
         
         process = multiprocessing.Process(
             target=self._compile_and_run_function,
-            args=(program, function_to_run, function_to_evolve, dataset, self._numba_accelerate, result_queue)
+            args=(program, function_to_run, function_to_evolve, dataset, self._numba_accelerate, result_queue, kwargs.get('seed', None))
         )
         process.start()
         process.join(timeout=timeout_seconds)
@@ -190,7 +190,18 @@ class LocalSandbox(Sandbox):
 
 
     def _compile_and_run_function(self, program, function_to_run, function_to_evolve, 
-                                  dataset, numba_accelerate, result_queue):
+                                  dataset, numba_accelerate, result_queue, seed=None):
+        # 在子进程内设置随机种子，保证本地评估的复现性
+        try:
+            import os as _os
+            import random as _random
+            import numpy as _np
+            if seed is not None:
+                _os.environ['PYTHONHASHSEED'] = str(seed)
+                _random.seed(seed)
+                _np.random.seed(seed)
+        except Exception:
+            pass
         try:
             # optimize the code (decorate function_to_run with @numba.jit())
             if numba_accelerate:
@@ -276,7 +287,7 @@ class Evaluator:
         for current_input in self._inputs:
             run_results = self._sandbox.run(
                 program, self._function_to_run, self._function_to_evolve, self._inputs, current_input,
-                self._timeout_seconds
+                self._timeout_seconds, **kwargs
             )
             extras = None
             if isinstance(run_results, tuple) and len(run_results) == 3:

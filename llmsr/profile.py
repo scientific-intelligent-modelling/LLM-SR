@@ -36,6 +36,8 @@ class Profiler:
         self._tot_sample_time = 0
         self._tot_evaluate_time = 0
         self._all_sampled_functions: Dict[int, code_manipulation.Function] = {}
+        # 维护 Top-K 方程（默认前 10 个）
+        self._top_k = 10
 
         # 去除 TensorBoard 依赖，不再创建 SummaryWriter
         self._writer = None
@@ -50,7 +52,15 @@ class Profiler:
         # 已移除 TensorBoard 功能：保持空实现以兼容调用点
         return
 
-    def _write_json(self, programs: code_manipulation.Function):
+    def _build_content(self, programs: code_manipulation.Function) -> Dict:
+        """按照约定字段顺序构建 JSON 内容。
+
+        约定顺序：
+        1. sample_order
+        2. score
+        3. function
+        4. params
+        """
         sample_order = programs.global_sample_nums
         sample_order = sample_order if sample_order is not None else 0
         function_str = str(programs)
@@ -58,14 +68,48 @@ class Profiler:
         params = programs.params
         content = {
             'sample_order': sample_order,
-            'function': function_str,
             'score': score,
+            'function': function_str,
             # 可选：参数，如存在则写入
-            'params': params
+            'params': params,
         }
+        return content
+
+    def _write_json(self, programs: code_manipulation.Function):
+        """写出单个样本对应的 JSON 文件。"""
+        sample_order = programs.global_sample_nums
+        sample_order = sample_order if sample_order is not None else 0
+        content = self._build_content(programs)
         path = os.path.join(self._json_dir, f'samples_{sample_order}.json')
         with open(path, 'w') as json_file:
             json.dump(content, json_file)
+
+    def _write_topk_json(self):
+        """根据当前采样结果，维护前 K 个最优方程文件。
+
+        命名规则：
+        - top01_*.json, top02_*.json, ..., top10_*.json
+        内容字段顺序同 _build_content。
+        """
+        # 按 score 从大到小排序，忽略 score 为空的样本
+        scored_items = [
+            (order, func)
+            for order, func in self._all_sampled_functions.items()
+            if getattr(func, 'score', None) is not None
+        ]
+        if not scored_items:
+            return
+
+        scored_items.sort(key=lambda x: x[1].score, reverse=True)
+        top_items = scored_items[: self._top_k]
+
+        for idx, (order, func) in enumerate(top_items, start=1):
+            prefix = f'top{idx:02d}_'
+            content = self._build_content(func)
+            filename = f'{prefix}samples_{order}.json'
+            path = os.path.join(self._json_dir, filename)
+            with open(path, 'w') as json_file:
+                json.dump(content, json_file)
 
     def register_function(self, programs: code_manipulation.Function):
         if self._max_log_nums is not None and self._num_samples >= self._max_log_nums:
@@ -78,6 +122,8 @@ class Profiler:
             self._record_and_verbose(sample_orders)
             self._write_tensorboard()
             self._write_json(programs)
+            # 每次有新样本注册时，刷新前 Top-K 方程文件
+            self._write_topk_json()
 
     def _record_and_verbose(self, sample_orders: int):
         function = self._all_sampled_functions[sample_orders]

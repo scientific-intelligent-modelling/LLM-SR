@@ -65,7 +65,7 @@ python3 main.py \
   --problem_name oscillator1 \
   --llm_config llm.config \
   --data_csv ./data/oscillator1/train.csv \
-  --iterations 50 \
+  --iterations 1000 \
   --samples_per_iteration 8
 ```
 

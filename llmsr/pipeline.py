@@ -73,6 +73,7 @@ def main(
     else:
         profiler = profile.Profiler(log_dir)
 
+    seed = kwargs.get('seed', None)
     evaluators = []
     for _ in range(config.num_evaluators):
         evaluators.append(evaluator.Evaluator(
@@ -86,7 +87,7 @@ def main(
         ))
 
     initial = template.get_function(function_to_evolve).body
-    evaluators[0].analyse(initial, island_id=None, version_generated=None, profiler=profiler)
+    evaluators[0].analyse(initial, island_id=None, version_generated=None, profiler=profiler, seed=seed)
 
     # Set global max sample nums.
     samplers = [
@@ -106,4 +107,4 @@ def main(
     # sampler enters an infinite loop, without parallelization only the first
     # sampler will do any work.
     for s in samplers:
-        s.sample(profiler=profiler)
+        s.sample(profiler=profiler, seed=seed)
