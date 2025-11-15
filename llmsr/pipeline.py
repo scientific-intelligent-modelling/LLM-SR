@@ -71,7 +71,11 @@ def main(
     if log_dir is None:
         profiler = None
     else:
-        profiler = profile.Profiler(log_dir)
+        # samples_per_prompt 与命令行中的 samples_per_iteration 一致
+        profiler = profile.Profiler(
+            log_dir,
+            samples_per_iteration=config.samples_per_prompt
+        )
 
     seed = kwargs.get('seed', None)
     evaluators = []
