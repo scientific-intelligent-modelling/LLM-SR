@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import os.path
+import os
 from typing import List, Dict, Any
 import logging
 import json
@@ -116,6 +116,19 @@ class Profiler:
         - top01_*.json, top02_*.json, ..., top10_*.json
         内容字段顺序同 _build_content。
         """
+        # 先清理旧的 top 文件，确保 samples 目录中只保留当前这一轮的 Top-K
+        try:
+            for fname in os.listdir(self._json_dir):
+                if fname.startswith('top') and fname.endswith('.json'):
+                    try:
+                        os.remove(os.path.join(self._json_dir, fname))
+                    except Exception:
+                        # 删除失败不影响后续写入新的 top 文件
+                        continue
+        except Exception:
+            # 目录不存在或其他错误时直接跳过清理
+            pass
+
         # 按 score 从大到小排序，忽略 score 为空的样本
         scored_items = [
             (order, func)
@@ -188,8 +201,10 @@ class Profiler:
             self._all_sampled_functions[sample_orders] = programs
             self._record_and_verbose(sample_orders)
             self._write_tensorboard()
-            self._write_json(programs)
-            # 每次有新样本注册时，刷新前 Top-K 方程文件
+            # 只在 samples 目录中保存“最佳”相关数据：不再为每个样本单独写 samples_{id}.json，
+            # 而是通过 Top-K 文件持久化当前最优集合。
+            # self._write_json(programs)
+            # 每次有新样本注册时，刷新前 Top-K 方程文件（top{rank}_samples_{sample_order}.json）
             self._write_topk_json()
             # 更新按 iteration 统计的进度信息
             self._update_iteration_progress(sample_orders)

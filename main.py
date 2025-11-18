@@ -21,14 +21,14 @@ parser = ArgumentParser()
 parser.add_argument('--port', type=int, default=None)
 parser.add_argument('--llm_config', type=str, default=None)
 parser.add_argument('--spec_path', type=str)
-parser.add_argument('--exp_path', type=str, default="./exps", help='实验根目录（默认 ./exps）')
+parser.add_argument('--exp_path', type=str, default="./experiments", help='实验根目录（默认 ./experiments')
 parser.add_argument('--exp_name', type=str, default=None, help='实验名称（默认 问题名_时间戳）')
 parser.add_argument('--problem_name', type=str, default="oscillator1")
 parser.add_argument('--run_id', type=int, default=1)
 parser.add_argument('--data_csv', type=str, default=None, help='CSV 路径：首行表头，前 n-1 列为特征，最后一列为目标')
 parser.add_argument('--background', type=str, default='', help='问题背景描述，将写入动态规格')
 parser.add_argument('--max_params', type=int, default=10, help='规格中可优化参数个数（MAX_NPARAMS）')
-parser.add_argument('--iterations', type=int, default=2500, help='搜索轮数（每轮生成 samples_per_iteration 个候选，默认 2500 轮）')
+parser.add_argument('--niterations', type=int, default=2500, help='搜索轮数（每轮生成 samples_per_iteration 个候选，默认 2500 轮）')
 parser.add_argument('--samples_per_iteration', type=int, default=4, help='每轮生成的候选数量（默认 4）')
 parser.add_argument('--seed', type=int, default=None, help='随机种子（仅作用于本地 NumPy/random/子进程）')
 args = parser.parse_args()
@@ -60,12 +60,12 @@ if __name__ == '__main__':
     # 基础配置：以命令行指定的每轮样本数覆盖 samples_per_prompt
     cfg = config_mod.Config(samples_per_prompt=args.samples_per_iteration)
 
-    # 总采样上限：iterations * samples_per_iteration
-    iterations = int(max(1, args.iterations))
+    # 总采样上限：niterations * samples_per_iteration
+    niterations = int(max(1, args.niterations))
     samples_per_iter = int(max(1, args.samples_per_iteration))
-    global_max_sample_num = iterations * samples_per_iter
-    logging.info('sampling plan: iterations=%d, samples_per_iteration=%d, max_samples=%d',
-                 iterations, samples_per_iter, global_max_sample_num)
+    global_max_sample_num = niterations * samples_per_iter
+    logging.info('sampling plan: niterations=%d, samples_per_iteration=%d, max_samples=%d',
+                 niterations, samples_per_iter, global_max_sample_num)
 
     # 构造 LLM 客户端（仅 API 模式）
     client = None
