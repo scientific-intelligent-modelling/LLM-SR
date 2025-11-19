@@ -6,3 +6,4 @@ results
 llm.config
 *.config
 llmsr/__pycache__/*
+experiments

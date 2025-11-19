@@ -55,6 +55,12 @@ if __name__ == '__main__':
             np.random.seed(args.seed)
         except Exception:
             pass
+    # 重置本次实验的大模型统计信息（tokens 与时间）
+    try:
+        llm.reset_global_tokens()
+        llm.reset_global_time()
+    except Exception:
+        pass
     # 运行时类配置：使用本地 LLM 封装与沙箱
     class_config = config_mod.ClassConfig(llm_class=sampler.LocalLLM, sandbox_class=evaluator.LocalSandbox)
     # 基础配置：以命令行指定的每轮样本数覆盖 samples_per_prompt

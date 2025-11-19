@@ -1,4 +1,5 @@
 import os
+import time
 """统一的 LLM 客户端封装。
 
 提供商/模型命名规则：'provider/model'，provider 大小写不敏感，model 保留大小写与路径。
@@ -9,20 +10,37 @@ from typing import List, Dict, Tuple
 
 # 单次实验级别的全局 token 统计（需由调用方在实验开始前手动 reset）
 GLOBAL_TOKENS = {
+    'prompt': 0,    # 提示词（prompt）部分 token
     'thinking': 0,  # 推理/思维链部分 token（reasoning_tokens）
     'content': 0,   # 可见输出部分 token（completion_tokens - reasoning_tokens）
     'total': 0,     # provider 返回的总 token（通常含 prompt + completion）
 }
+# 单次实验级别的全局时间统计（秒）
+GLOBAL_TIME_SECONDS: float = 0.0
+
 
 def reset_global_tokens():
     """重置本次实验的全局 token 统计。"""
+    GLOBAL_TOKENS['prompt'] = 0
     GLOBAL_TOKENS['thinking'] = 0
     GLOBAL_TOKENS['content'] = 0
     GLOBAL_TOKENS['total'] = 0
 
+
 def get_global_tokens() -> Dict[str, int]:
     """获取本次实验的全局 token 统计（thinking/content/total）。"""
     return dict(GLOBAL_TOKENS)
+
+
+def reset_global_time():
+    """重置本次实验的大模型总耗时统计（秒）。"""
+    global GLOBAL_TIME_SECONDS
+    GLOBAL_TIME_SECONDS = 0.0
+
+
+def get_global_time() -> float:
+    """获取本次实验的大模型总耗时（秒）。"""
+    return float(GLOBAL_TIME_SECONDS)
 
 
 class LLMClient:
@@ -52,6 +70,8 @@ class LLMClient:
             'content': 0,
             'total': 0,
         }
+        # 实例级别的累计耗时（秒）
+        self._cum_time_seconds: float = 0.0
         self.kwargs = {
             'max_tokens': 1024,  # 更安全的默认值，避免超过部分模型上限
             'temperature': 0.6,
@@ -115,8 +135,8 @@ class LLMClient:
         except Exception:
             pass
 
-        # 计时（可按需启用）
-        # start_time = time.time()
+        # 计时（用于统计每次调用与总耗时）
+        start_time = time.time()
         try:
             response = requests.post(request_url, headers=headers, json=payload, timeout=120)
             # 状态码错误先抛出异常（下方 except 会打印详情）
@@ -164,14 +184,24 @@ class LLMClient:
 
             # 更新单次实验全局统计
             try:
+                GLOBAL_TOKENS['prompt'] += int(prompt_tokens)
                 GLOBAL_TOKENS['thinking'] += int(reasoning_tokens)
                 GLOBAL_TOKENS['content'] += int(completion_tokens - reasoning_tokens)
                 GLOBAL_TOKENS['total'] += int(total_tokens)
             except Exception:
                 pass
 
-            # 实例级累计与打印
+            # 实例级累计 & 全局时间累计 & 打印
             try:
+                # 更新时间统计
+                elapsed = time.time() - start_time
+                self._cum_time_seconds += float(elapsed)
+                try:
+                    global GLOBAL_TIME_SECONDS
+                    GLOBAL_TIME_SECONDS += float(elapsed)
+                except Exception:
+                    pass
+
                 self._call_index += 1
                 self._cum_tokens['prompt'] += int(prompt_tokens)
                 self._cum_tokens['thinking'] += int(reasoning_tokens)
@@ -188,7 +218,11 @@ class LLMClient:
                     f"累计 tokens：prompt={self._cum_tokens['prompt']}, thinking={self._cum_tokens['thinking']}, "
                     f"content={self._cum_tokens['content']}, total={self._cum_tokens['total']}"
                 )
-                print(header + "\n" + line_cur + "\n" + line_cum)
+                line_time = (
+                    f"本次用时：{elapsed:.2f}s，"
+                    f"累计用时：{self._cum_time_seconds:.2f}s"
+                )
+                print(header + "\n" + line_cur + "\n" + line_cum + "\n" + line_time)
             except Exception:
                 pass
 

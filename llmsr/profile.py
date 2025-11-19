@@ -6,6 +6,7 @@ import os
 from typing import List, Dict, Any
 import logging
 import json
+import llm
 from llmsr import code_manipulation
 
 
@@ -180,6 +181,19 @@ class Profiler:
             'best_score': self._cur_best_program_score,
             'best_sample_order': self._cur_best_program_sample_order,
         }
+        # 追加大模型统计信息：总 tokens 与总耗时（秒，保留两位小数）
+        try:
+            tokens = llm.get_global_tokens()
+        except Exception:
+            tokens = {}
+        try:
+            total_time = llm.get_global_time()
+        except Exception:
+            total_time = None
+
+        record['llm_tokens'] = tokens
+        if total_time is not None:
+            record['llm_time_seconds'] = round(float(total_time), 2)
         self._iteration_progress[iteration_idx] = record
 
         # 将所有 iteration 按编号排序后写入统一 JSON 文件
