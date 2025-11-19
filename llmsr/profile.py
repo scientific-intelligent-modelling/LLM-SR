@@ -86,8 +86,8 @@ class Profiler:
         约定顺序：
         1. iteration
         2. sample_order
-        3. mse
-        4. nmse
+        3. nmse
+        4. mse
         5. function
         6. params
         """
@@ -107,11 +107,12 @@ class Profiler:
             else:
                 nmse = None
         params = programs.params
+        # 先写 nmse 再写 mse，便于直接扫 nmse 排序
         content = {
             'iteration': iteration_idx,
             'sample_order': sample_order,
-            'mse': mse,
             'nmse': nmse,
+            'mse': mse,
             'function': function_str,
             # 可选：参数，如存在则写入
             'params': params,
@@ -206,10 +207,11 @@ class Profiler:
         if iteration_idx is None:
             return
 
+        # 先写 best_nmse 再写 best_mse，保持与样本 JSON 一致的关注顺序
         record = {
             'iteration': iteration_idx,
-            'best_mse': self._cur_best_program_mse,
             'best_nmse': self._cur_best_program_nmse,
+            'best_mse': self._cur_best_program_mse,
             'best_sample_order': self._cur_best_program_sample_order,
         }
         # 追加大模型统计信息：总 tokens 与总耗时（秒，保留两位小数）
@@ -260,17 +262,10 @@ class Profiler:
         sample_time = function.sample_time
         evaluate_time = function.evaluate_time
         score = function.score
-        # log attributes of the function
-        print(f'================= Evaluated Function =================')
-        print(f'{function_str}')
-        print(f'------------------------------------------------------')
-        print(f'Score        : {str(score)}')
-        print(f'Sample time  : {str(sample_time)}')
-        print(f'Evaluate time: {str(evaluate_time)}')
-        print(f'Sample orders: {str(sample_orders)}')
-        print(f'======================================================\n\n')
 
-        # 计算当前样本的 MSE / NMSE，用于更新全局最优
+        # 计算当前样本的 MSE / NMSE（score = -MSE）
+        mse = None
+        nmse = None
         if score is not None:
             mse = -float(score)
             if self._target_variance is not None and self._target_variance > 0:
@@ -278,13 +273,32 @@ class Profiler:
             else:
                 nmse = None
 
-            # update best function in curve（以 MSE 最小为优）
-            if (self._cur_best_program_mse is None) or (mse < self._cur_best_program_mse):
-                self._cur_best_program_mse = mse
+        # log attributes of the function（打印 MSE 与 NMSE）
+        print(f'================= Evaluated Function =================')
+        print(f'{function_str}')
+        print(f'------------------------------------------------------')
+        print(f'MSE         : {mse}')
+        print(f'NMSE        : {nmse}')
+        print(f'Sample time : {str(sample_time)}')
+        print(f'Evaluate time: {str(evaluate_time)}')
+        print(f'Sample orders: {str(sample_orders)}')
+        print(f'======================================================\n\n')
+
+        # update best function in curve（优先以 NMSE 最小为优，若不可用则回退到 MSE）
+        if nmse is not None:
+            if (self._cur_best_program_nmse is None) or (nmse < self._cur_best_program_nmse):
                 self._cur_best_program_nmse = nmse
+                self._cur_best_program_mse = mse
                 self._cur_best_program_sample_order = sample_orders
                 self._cur_best_program_str = function_str
                 # 新的全局最优，额外保存一份到 best_history 目录
+                self._save_best_history_sample(function, sample_orders)
+        elif mse is not None:
+            if (self._cur_best_program_mse is None) or (mse < self._cur_best_program_mse):
+                self._cur_best_program_mse = mse
+                self._cur_best_program_nmse = None
+                self._cur_best_program_sample_order = sample_orders
+                self._cur_best_program_str = function_str
                 self._save_best_history_sample(function, sample_orders)
 
         # update statistics about function
