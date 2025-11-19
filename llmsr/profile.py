@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import logging
 import json
 import llm
@@ -17,6 +17,7 @@ class Profiler:
             pkl_dir: str | None = None,
             max_log_nums: int | None = None,
             samples_per_iteration: int | None = None,
+            target_variance: Optional[float] = None,
     ):
         """
         参数说明：
@@ -34,12 +35,16 @@ class Profiler:
         os.makedirs(self._best_history_dir, exist_ok=True)
         # 每个 iteration 样本数，用于把 sample_order 映射到 iteration
         self._samples_per_iteration = samples_per_iteration or 1
+        # 目标变量的方差，用于计算和排序 NMSE（越小越好）
+        self._target_variance: Optional[float] = target_variance
         # 进度记录文件路径：保存每个 iteration 的最佳信息
         self._progress_json_path = os.path.join(log_dir, 'progress.json')
         self._max_log_nums = max_log_nums
         self._num_samples = 0
         self._cur_best_program_sample_order = None
-        self._cur_best_program_score = -99999999
+        # 当前全局最优的 MSE / NMSE（用于 progress.json）
+        self._cur_best_program_mse: Optional[float] = None
+        self._cur_best_program_nmse: Optional[float] = None
         self._cur_best_program_str = None
         self._evaluate_success_program_num = 0
         self._evaluate_failed_program_num = 0
@@ -81,20 +86,32 @@ class Profiler:
         约定顺序：
         1. iteration
         2. sample_order
-        3. score
-        4. function
-        5. params
+        3. mse
+        4. nmse
+        5. function
+        6. params
         """
         sample_order = programs.global_sample_nums
         sample_order = sample_order if sample_order is not None else 0
         iteration_idx = self._compute_iteration_index(sample_order)
         function_str = str(programs)
         score = programs.score
+        # 原始 score 为 -MSE，这里转换为正的 MSE，并根据目标方差计算 NMSE
+        if score is None:
+            mse = None
+            nmse = None
+        else:
+            mse = -float(score)
+            if self._target_variance is not None and self._target_variance > 0:
+                nmse = mse / float(self._target_variance)
+            else:
+                nmse = None
         params = programs.params
         content = {
             'iteration': iteration_idx,
             'sample_order': sample_order,
-            'score': score,
+            'mse': mse,
+            'nmse': nmse,
             'function': function_str,
             # 可选：参数，如存在则写入
             'params': params,
@@ -130,19 +147,31 @@ class Profiler:
             # 目录不存在或其他错误时直接跳过清理
             pass
 
-        # 按 score 从大到小排序，忽略 score 为空的样本
-        scored_items = [
-            (order, func)
-            for order, func in self._all_sampled_functions.items()
-            if getattr(func, 'score', None) is not None
-        ]
+        # 根据 NMSE（若可用）或 MSE 升序排序，忽略 score 为空的样本
+        scored_items = []
+        for order, func in self._all_sampled_functions.items():
+            score = getattr(func, 'score', None)
+            if score is None:
+                continue
+            mse = -float(score)
+            if self._target_variance is not None and self._target_variance > 0:
+                nmse = mse / float(self._target_variance)
+            else:
+                nmse = None
+            scored_items.append((order, func, mse, nmse))
+
         if not scored_items:
             return
 
-        scored_items.sort(key=lambda x: x[1].score, reverse=True)
+        def _sort_key(item):
+            _, _, mse_val, nmse_val = item
+            key_val = nmse_val if nmse_val is not None else mse_val
+            return key_val if key_val is not None else float('inf')
+
+        scored_items.sort(key=_sort_key)
         top_items = scored_items[: self._top_k]
 
-        for idx, (order, func) in enumerate(top_items, start=1):
+        for idx, (order, func, _, _) in enumerate(top_items, start=1):
             prefix = f'top{idx:02d}_'
             content = self._build_content(func)
             filename = f'{prefix}samples_{order}.json'
@@ -165,7 +194,8 @@ class Profiler:
 
         JSON 中每一项包含：
         - iteration: 当前迭代编号（从 1 开始）
-        - best_score: 截止该迭代为止的全局最佳得分
+        - best_mse: 截止该迭代为止的全局最小 MSE
+        - best_nmse: 截止该迭代为止的全局最小 NMSE（若可计算）
         - best_sample_order: 产生当前全局最优得分的样本索引
         """
         if self._cur_best_program_sample_order is None:
@@ -178,7 +208,8 @@ class Profiler:
 
         record = {
             'iteration': iteration_idx,
-            'best_score': self._cur_best_program_score,
+            'best_mse': self._cur_best_program_mse,
+            'best_nmse': self._cur_best_program_nmse,
             'best_sample_order': self._cur_best_program_sample_order,
         }
         # 追加大模型统计信息：总 tokens 与总耗时（秒，保留两位小数）
@@ -239,13 +270,22 @@ class Profiler:
         print(f'Sample orders: {str(sample_orders)}')
         print(f'======================================================\n\n')
 
-        # update best function in curve
-        if function.score is not None and score > self._cur_best_program_score:
-            self._cur_best_program_score = score
-            self._cur_best_program_sample_order = sample_orders
-            self._cur_best_program_str = function_str
-            # 新的全局最优，额外保存一份到 best_history 目录
-            self._save_best_history_sample(function, sample_orders)
+        # 计算当前样本的 MSE / NMSE，用于更新全局最优
+        if score is not None:
+            mse = -float(score)
+            if self._target_variance is not None and self._target_variance > 0:
+                nmse = mse / float(self._target_variance)
+            else:
+                nmse = None
+
+            # update best function in curve（以 MSE 最小为优）
+            if (self._cur_best_program_mse is None) or (mse < self._cur_best_program_mse):
+                self._cur_best_program_mse = mse
+                self._cur_best_program_nmse = nmse
+                self._cur_best_program_sample_order = sample_orders
+                self._cur_best_program_str = function_str
+                # 新的全局最优，额外保存一份到 best_history 目录
+                self._save_best_history_sample(function, sample_orders)
 
         # update statistics about function
         if score:

@@ -19,6 +19,8 @@ from __future__ import annotations
 # from collections.abc import Sequence
 from typing import Any, Tuple, Sequence
 
+import numpy as np
+
 from llmsr import code_manipulation
 from llmsr import config as config_lib
 from llmsr import evaluator
@@ -66,6 +68,19 @@ def main(
     template = code_manipulation.text_to_program(specification)
     database = buffer.ExperienceBuffer(config.experience_buffer, template, function_to_evolve)
 
+    # 可选：从输入数据中估计目标变量的方差，用于 NMSE 计算
+    target_variance = None
+    try:
+        # 约定输入为形如 {'data': {'inputs': X, 'outputs': y}} 的字典
+        if hasattr(inputs, 'values'):
+            any_dataset = next(iter(inputs.values()))
+            if isinstance(any_dataset, dict) and 'outputs' in any_dataset:
+                y = np.asarray(any_dataset['outputs'])
+                if y.size > 0:
+                    target_variance = float(np.var(y))
+    except Exception:
+        target_variance = None
+
     # get log_dir and create profiler
     log_dir = kwargs.get('log_dir', None)
     if log_dir is None:
@@ -74,7 +89,8 @@ def main(
         # samples_per_prompt 与命令行中的 samples_per_iteration 一致
         profiler = profile.Profiler(
             log_dir,
-            samples_per_iteration=config.samples_per_prompt
+            samples_per_iteration=config.samples_per_prompt,
+            target_variance=target_variance,
         )
 
     seed = kwargs.get('seed', None)

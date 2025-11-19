@@ -171,7 +171,7 @@ class LLMSRRegressor:
         if not os.path.isdir(samples_dir):
             raise RuntimeError(f"找不到 samples 目录: {samples_dir}")
 
-        # 优先尝试 top01_*.json；如果没有，则在所有 top*.json 中找 score 最大的
+        # 优先尝试 top01_*.json；如果没有，则在所有 top*.json 中按 NMSE/MSE 最小选择
         import glob
 
         candidates = glob.glob(os.path.join(samples_dir, "top01_*.json"))
@@ -180,7 +180,7 @@ class LLMSRRegressor:
         if not candidates:
             raise RuntimeError("在 samples 目录下没有找到任何 top*.json，说明搜索可能完全失败")
 
-        best_score = None
+        best_key = None
         best_data = None
         for path in candidates:
             try:
@@ -188,15 +188,28 @@ class LLMSRRegressor:
                     d = json.load(f)
             except Exception:
                 continue
-            score = d.get("score")
-            if score is None:
+            # 新格式优先：nmse / mse
+            key_val = None
+            nmse = d.get("nmse")
+            mse = d.get("mse")
+            if isinstance(nmse, (int, float)):
+                key_val = float(nmse)
+            elif isinstance(mse, (int, float)):
+                key_val = float(mse)
+            else:
+                # 兼容旧格式：score = -MSE，score 越大越好
+                score = d.get("score")
+                if isinstance(score, (int, float)):
+                    key_val = -float(score)
+
+            if key_val is None:
                 continue
-            if best_score is None or score > best_score:
-                best_score = score
+            if best_key is None or key_val < best_key:
+                best_key = key_val
                 best_data = d
 
         if best_data is None:
-            raise RuntimeError("未能在 top*.json 中找到带 score 的样本")
+            raise RuntimeError("未能在 top*.json 中找到可用的样本（mse/nmse/score 均缺失）")
 
         func_str = best_data.get("function", "")
         self.params_ = best_data.get("params")
