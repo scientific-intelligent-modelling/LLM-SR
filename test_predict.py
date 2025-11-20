@@ -23,6 +23,12 @@ if __name__ == "__main__":
     parser.add_argument("--niterations", type=int, default=3, help="搜索轮数（默认 3，用于快速测试）")
     parser.add_argument("--samples_per_iteration", type=int, default=4, help="每轮生成的候选数量（默认 4）")
     parser.add_argument("--seed", type=int, default=None, help="随机种子（仅作用于本地 NumPy/random/子进程）")
+    parser.add_argument(
+        "--anonymize",
+        type=str,
+        default="False",
+        help="是否对变量名进行匿名化（仅当值为 True/true 时生效）",
+    )
     args = parser.parse_args()
 
     problem_name = args.problem_name
@@ -34,6 +40,7 @@ if __name__ == "__main__":
 
     print(f"训练数据: {train_csv}")
     print(f"预测数据: {test_csv}")
+    anonymize_flag = str(args.anonymize).lower() == "true"
 
     # 构造回归器实例，并直接在本脚本中执行一次 fit
     reg = LLMSRRegressor(
@@ -48,6 +55,7 @@ if __name__ == "__main__":
         samples_per_iteration=args.samples_per_iteration,
         seed=args.seed,
         existing_exp_dir=None,
+         anonymize=anonymize_flag,
     )
 
     print("开始执行 fit() ...")
@@ -55,6 +63,15 @@ if __name__ == "__main__":
     print("fit() 完成，开始预测 ...")
 
     df_test = pd.read_csv(test_csv)
+
+    # 若使用匿名化，测试集列名也改为 x1,x2,...,y 以与训练阶段保持一致
+    if anonymize_flag:
+        cols = list(df_test.columns)
+        if len(cols) < 2:
+            raise ValueError("测试集 CSV 至少需要 2 列（前 n-1 列为特征，最后 1 列为目标）")
+        n = len(cols)
+        new_cols = [f"x{i+1}" for i in range(n - 1)] + ["y"]
+        df_test.columns = new_cols
 
     # 直接传入完整的 DataFrame，Regressor 会根据训练时的 feature_names 自动选取列
     y_pred = reg.predict(df_test)

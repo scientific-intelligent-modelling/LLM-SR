@@ -38,6 +38,7 @@ class LLMSRRegressor:
         samples_per_iteration: int = 4,
         seed: Optional[int] = None,
         existing_exp_dir: Optional[str] = None,
+        anonymize: bool = False,
     ):
         # 训练相关配置
         self.problem_name = problem_name
@@ -57,6 +58,9 @@ class LLMSRRegressor:
         self.target_name_: Optional[str] = None
         self.is_fitted_: bool = existing_exp_dir is not None
 
+        # 是否对变量名进行匿名化（使用 x1,x2,...,y）
+        self.anonymize: bool = anonymize
+
         # 预测时缓存的方程与参数
         self._equation_func = None
         self.params_: Optional[List[float]] = None
@@ -71,8 +75,17 @@ class LLMSRRegressor:
         if len(cols) < 2:
             raise ValueError("CSV 至少需要 2 列（前 n-1 列为特征，最后 1 列为目标）")
 
-        self.feature_names_ = cols[:-1]
-        self.target_name_ = cols[-1]
+        # 根据 anonymize 开关决定使用原始列名还是匿名变量名
+        if self.anonymize:
+            n = len(cols)
+            # 特征列统一命名为 x1, x2, ..., x{n-1}，目标列为 y
+            new_cols = [f"x{i+1}" for i in range(n - 1)] + ["y"]
+            df.columns = new_cols
+            self.feature_names_ = new_cols[:-1]
+            self.target_name_ = new_cols[-1]
+        else:
+            self.feature_names_ = cols[:-1]
+            self.target_name_ = cols[-1]
 
         data = df.to_numpy()
         X = data[:, :-1]
