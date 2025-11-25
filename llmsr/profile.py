@@ -18,6 +18,7 @@ class Profiler:
             max_log_nums: int | None = None,
             samples_per_iteration: int | None = None,
             target_variance: Optional[float] = None,
+            wandb_run=None,
     ):
         """
         参数说明：
@@ -64,6 +65,7 @@ class Profiler:
         self._each_sample_tot_evaluate_time = []
         # iteration -> 该 iteration 结束时的最佳统计
         self._iteration_progress: Dict[int, Dict[str, Any]] = {}
+        self._wandb_run = wandb_run
 
     def _write_tensorboard(self):
         # 已移除 TensorBoard 功能：保持空实现以兼容调用点
@@ -207,6 +209,7 @@ class Profiler:
         if iteration_idx is None:
             return
 
+        prev_record = self._iteration_progress.get(iteration_idx)
         # 先写 best_nmse 再写 best_mse，保持与样本 JSON 一致的关注顺序
         record = {
             'iteration': iteration_idx,
@@ -228,6 +231,13 @@ class Profiler:
         if total_time is not None:
             record['llm_time_seconds'] = round(float(total_time), 2)
         self._iteration_progress[iteration_idx] = record
+
+        # 将 per-iteration 数据推送到 WandB（若启用），确保仅在数据发生变化时推送
+        if self._wandb_run and record != prev_record:
+            try:
+                self._wandb_run.log(record, step=iteration_idx)
+            except Exception:
+                pass
 
         # 将所有 iteration 按编号排序后写入统一 JSON 文件
         history = [self._iteration_progress[k] for k in sorted(self._iteration_progress.keys())]

@@ -3,7 +3,8 @@ from __future__ import annotations
 import os
 import json
 from datetime import datetime
-from typing import Optional, Union, List
+import time
+from typing import Optional, Union, List, Dict, Any
 
 import numpy as np
 import pandas as pd
@@ -39,6 +40,7 @@ class LLMSRRegressor:
         seed: Optional[int] = None,
         existing_exp_dir: Optional[str] = None,
         anonymize: bool = False,
+        wandb_config: Optional[Dict[str, Any]] = None,
     ):
         # 训练相关配置
         self.problem_name = problem_name
@@ -51,6 +53,7 @@ class LLMSRRegressor:
         self.niterations = niterations
         self.samples_per_iteration = samples_per_iteration
         self.seed = seed
+        self.wandb_config = wandb_config or {}
 
         # 实验目录 / 元信息
         self.exp_dir_: Optional[str] = existing_exp_dir
@@ -64,6 +67,12 @@ class LLMSRRegressor:
         # 预测时缓存的方程与参数
         self._equation_func = None
         self.params_: Optional[List[float]] = None
+        self.best_nmse_: Optional[float] = None
+        self.best_mse_: Optional[float] = None
+        self.best_equation_str_: Optional[str] = None
+
+        # WandB 运行句柄
+        self._wandb_run = None
 
     # --------------------
     # 内部工具方法
@@ -175,6 +184,56 @@ class LLMSRRegressor:
         with open(meta_path, "w", encoding="utf-8") as fw:
             json.dump(meta, fw, ensure_ascii=False, indent=2)
 
+    def _init_wandb(self, dataset: Dict[str, Any]):
+        """初始化 WandB 运行（若启用）。"""
+        if not self.wandb_config or not self.wandb_config.get("project"):
+            return
+        try:
+            import wandb
+        except Exception:
+            print("[LLMSR] 未安装 wandb，跳过 WandB 记录。")
+            return
+
+        tags = self.wandb_config.get("tags")
+        if isinstance(tags, str):
+            tags = [t.strip() for t in tags.split(",") if t.strip()]
+
+        inputs = dataset.get("data", {}).get("inputs")
+        outputs = dataset.get("data", {}).get("outputs")
+        num_samples = int(outputs.shape[0]) if hasattr(outputs, "shape") else None
+        num_features = int(inputs.shape[1]) if hasattr(inputs, "shape") else None
+
+        config_payload = {
+            "algorithm": "llmsr",
+            "problem_name": self.problem_name,
+            "background": self.background,
+            "llm_config_path": os.path.abspath(self.llm_config_path),
+            "exp_path": os.path.abspath(self.exp_path),
+            "exp_name": self.exp_name,
+            "max_params": self.max_params,
+            "niterations": self.niterations,
+            "samples_per_iteration": self.samples_per_iteration,
+            "seed": self.seed,
+            "anonymize": self.anonymize,
+            "dataset": {
+                "num_samples": num_samples,
+                "num_features": num_features,
+            },
+        }
+
+        try:
+            self._wandb_run = wandb.init(
+                project=self.wandb_config.get("project"),
+                entity=self.wandb_config.get("entity"),
+                name=self.wandb_config.get("name"),
+                group=self.wandb_config.get("group"),
+                tags=tags,
+                config=config_payload,
+            )
+        except Exception as e:
+            print(f"[LLMSR] 初始化 WandB 失败，跳过记录: {e}")
+            self._wandb_run = None
+
     def _load_best_equation(self):
         """从 samples 目录中加载当前实验的最优方程。"""
         if self.exp_dir_ is None:
@@ -226,6 +285,13 @@ class LLMSRRegressor:
 
         func_str = best_data.get("function", "")
         self.params_ = best_data.get("params")
+        nmse = best_data.get("nmse")
+        mse = best_data.get("mse")
+        if nmse is None and mse is not None and self.target_name_:
+            nmse = mse
+        self.best_nmse_ = nmse
+        self.best_mse_ = mse
+        self.best_equation_str_ = func_str
 
         # 动态执行方程定义
         global_ns = {"np": np}
@@ -241,6 +307,7 @@ class LLMSRRegressor:
     # --------------------
     def fit(self):
         """启动一次完整的搜索实验。"""
+        start_time = time.time()
         # 设置本地随机种子（与 main.py 保持一致，只影响本地数值库）
         if self.seed is not None:
             try:
@@ -265,6 +332,7 @@ class LLMSRRegressor:
 
         # 数据与规格
         dataset, specification = self._build_dataset_and_spec()
+        self._init_wandb(dataset)
 
         # 实验目录
         exp_dir = self._prepare_exp_dir()
@@ -292,11 +360,41 @@ class LLMSRRegressor:
             log_dir=exp_dir,
             llm_client=client,
             seed=self.seed,
+            wandb_run=self._wandb_run,
         )
 
         # 搜索结束后加载最佳方程
         self._load_best_equation()
         self.is_fitted_ = True
+
+        # 结束时记录摘要指标
+        runtime_seconds = round(time.time() - start_time, 2)
+        try:
+            tokens = llm.get_global_tokens()
+        except Exception:
+            tokens = None
+        try:
+            total_llm_time = llm.get_global_time()
+        except Exception:
+            total_llm_time = None
+
+        if self._wandb_run:
+            summary_payload: Dict[str, Any] = {
+                "best_nmse": self.best_nmse_,
+                "best_mse": self.best_mse_,
+                "best_equation": self.best_equation_str_ or "",
+                "runtime_seconds": runtime_seconds,
+            }
+            if tokens is not None:
+                summary_payload["llm_tokens"] = tokens
+            if total_llm_time is not None:
+                summary_payload["total_llm_time_seconds"] = round(float(total_llm_time), 2)
+            try:
+                self._wandb_run.log(summary_payload)
+                self._wandb_run.finish()
+            except Exception as e:
+                print(f"[LLMSR] WandB 记录失败（summary），已忽略: {e}")
+
         return self
 
     def predict(self, X: Union[np.ndarray, pd.DataFrame]) -> np.ndarray:

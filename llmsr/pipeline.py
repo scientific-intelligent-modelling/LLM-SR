@@ -91,6 +91,7 @@ def main(
             log_dir,
             samples_per_iteration=config.samples_per_prompt,
             target_variance=target_variance,
+            wandb_run=kwargs.get('wandb_run'),
         )
 
     seed = kwargs.get('seed', None)
