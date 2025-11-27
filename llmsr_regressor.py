@@ -203,6 +203,18 @@ class LLMSRRegressor:
         num_samples = int(outputs.shape[0]) if hasattr(outputs, "shape") else None
         num_features = int(inputs.shape[1]) if hasattr(inputs, "shape") else None
 
+        # 数据集相关信息（基础统计 + 路径/名称）
+        dataset_info: Dict[str, Any] = {
+            "num_samples": num_samples,
+            "num_features": num_features,
+        }
+        ds_path = self.wandb_config.get("dataset_path")
+        if ds_path is not None:
+            dataset_info["path"] = ds_path
+        ds_name = self.wandb_config.get("dataset_name")
+        if ds_name is not None:
+            dataset_info["name"] = ds_name
+
         config_payload = {
             "algorithm": "llmsr",
             "problem_name": self.problem_name,
@@ -215,10 +227,7 @@ class LLMSRRegressor:
             "samples_per_iteration": self.samples_per_iteration,
             "seed": self.seed,
             "anonymize": self.anonymize,
-            "dataset": {
-                "num_samples": num_samples,
-                "num_features": num_features,
-            },
+            "dataset": dataset_info,
         }
 
         try:
