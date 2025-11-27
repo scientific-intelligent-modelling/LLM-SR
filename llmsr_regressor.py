@@ -197,6 +197,18 @@ class LLMSRRegressor:
         tags = self.wandb_config.get("tags")
         if isinstance(tags, str):
             tags = [t.strip() for t in tags.split(",") if t.strip()]
+        # prompts_tag：用于标记当前使用的提示词/规格版本
+        prompts_tag = self.wandb_config.get("prompts_tag")
+        # 若提供了 prompts_tag，则将其加入 tags（避免重复）
+        if prompts_tag:
+            if tags is None:
+                tags = [prompts_tag]
+            else:
+                try:
+                    if isinstance(tags, (list, tuple)) and prompts_tag not in tags:
+                        tags = list(tags) + [prompts_tag]
+                except Exception:
+                    pass
 
         inputs = dataset.get("data", {}).get("inputs")
         outputs = dataset.get("data", {}).get("outputs")
@@ -229,6 +241,9 @@ class LLMSRRegressor:
             "anonymize": self.anonymize,
             "dataset": dataset_info,
         }
+        # 将 prompts_tag 作为单独字段写入 config，便于后续分析/筛选
+        if prompts_tag:
+            config_payload["prompts_tag"] = prompts_tag
 
         try:
             self._wandb_run = wandb.init(
