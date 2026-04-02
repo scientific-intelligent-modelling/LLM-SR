@@ -8,6 +8,7 @@ from typing import Optional, Union, List, Dict, Any
 
 import numpy as np
 import pandas as pd
+import yaml
 
 import llm
 from llmsr import pipeline
@@ -40,6 +41,9 @@ class LLMSRRegressor:
         seed: Optional[int] = None,
         existing_exp_dir: Optional[str] = None,
         anonymize: bool = False,
+        metadata_path: Optional[str] = None,
+        feature_descriptions: Optional[List[Optional[str]]] = None,
+        target_description: Optional[str] = None,
         wandb_config: Optional[Dict[str, Any]] = None,
     ):
         # 训练相关配置
@@ -54,6 +58,9 @@ class LLMSRRegressor:
         self.samples_per_iteration = samples_per_iteration
         self.seed = seed
         self.wandb_config = wandb_config or {}
+        self.metadata_path = metadata_path
+        self.feature_descriptions_ = feature_descriptions
+        self.target_description_ = target_description
 
         # 实验目录 / 元信息
         self.exp_dir_: Optional[str] = existing_exp_dir
@@ -84,6 +91,9 @@ class LLMSRRegressor:
         if len(cols) < 2:
             raise ValueError("CSV 至少需要 2 列（前 n-1 列为特征，最后 1 列为目标）")
 
+        raw_feature_names = cols[:-1]
+        raw_target_name = cols[-1]
+
         # 根据 anonymize 开关决定使用原始列名还是匿名变量名
         if self.anonymize:
             n = len(cols)
@@ -96,6 +106,29 @@ class LLMSRRegressor:
             self.feature_names_ = cols[:-1]
             self.target_name_ = cols[-1]
 
+        feature_descriptions = self.feature_descriptions_
+        target_description = self.target_description_
+        if (feature_descriptions is None or target_description is None) and self.metadata_path:
+            try:
+                meta_root = yaml.safe_load(open(self.metadata_path, encoding="utf-8"))
+                dataset_meta = meta_root.get("dataset", meta_root)
+                feature_meta = dataset_meta.get("features") or []
+                feature_by_name = {
+                    str(item.get("name")): item.get("description")
+                    for item in feature_meta
+                    if isinstance(item, dict)
+                }
+                if feature_descriptions is None:
+                    feature_descriptions = [feature_by_name.get(name) for name in raw_feature_names]
+                if target_description is None:
+                    target_meta = dataset_meta.get("target") or {}
+                    if isinstance(target_meta, dict):
+                        target_description = target_meta.get("description")
+            except Exception:
+                pass
+        self.feature_descriptions_ = feature_descriptions
+        self.target_description_ = target_description
+
         data = df.to_numpy()
         X = data[:, :-1]
         y = data[:, -1].reshape(-1)
@@ -107,6 +140,8 @@ class LLMSRRegressor:
             self.target_name_,
             max_params=self.max_params,
             problem=self.problem_name,
+            feature_descriptions=self.feature_descriptions_,
+            target_description=self.target_description_,
         )
         return dataset, specification
 
@@ -174,7 +209,9 @@ class LLMSRRegressor:
             "exp_name": self.exp_name or os.path.basename(self.exp_dir_),
             "exp_dir": os.path.abspath(self.exp_dir_),
             "feature_names": self.feature_names_,
+            "feature_descriptions": self.feature_descriptions_,
             "target_name": self.target_name_,
+            "target_description": self.target_description_,
             "max_params": self.max_params,
             "niterations": self.niterations,
             "samples_per_iteration": self.samples_per_iteration,

@@ -9,7 +9,15 @@ from scientific_intelligent_modelling.srkit.spec_builder import dedup_names as _
 from scientific_intelligent_modelling.srkit.spec_builder import sanitize_name
 
 
-def build_specification(background: str, features: List[str], target: str, max_params: int = 10, problem: Optional[str] = None) -> str:
+def build_specification(
+    background: str,
+    features: List[str],
+    target: str,
+    max_params: int = 10,
+    problem: Optional[str] = None,
+    feature_descriptions: Optional[List[Optional[str]]] = None,
+    target_description: Optional[str] = None,
+) -> str:
     """构建完整的规范化规格文本。"""
     if not features:
         raise ValueError("features 不能为空")
@@ -22,4 +30,6 @@ def build_specification(background: str, features: List[str], target: str, max_p
         max_params=max_params,
         problem=problem,
         evaluate_style="llmsr",
+        feature_descriptions=feature_descriptions,
+        target_description=target_description,
     )
