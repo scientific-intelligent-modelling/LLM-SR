@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import os
 import json
 from datetime import datetime
@@ -84,6 +85,43 @@ class LLMSRRegressor:
     # --------------------
     # 内部工具方法
     # --------------------
+    @staticmethod
+    def _is_single_line_formula_function(func_source: Any) -> bool:
+        """只接受 equation 内唯一有效语句是单行 return 的候选。"""
+        if not isinstance(func_source, str) or not func_source.strip():
+            return False
+        try:
+            tree = ast.parse(func_source)
+        except Exception:
+            return False
+
+        equation_func = None
+        for node in tree.body:
+            if isinstance(node, ast.FunctionDef) and node.name == "equation":
+                equation_func = node
+                break
+        if equation_func is None:
+            return False
+
+        body = list(equation_func.body)
+        if (
+            body
+            and isinstance(body[0], ast.Expr)
+            and isinstance(getattr(body[0], "value", None), ast.Constant)
+            and isinstance(body[0].value.value, str)
+        ):
+            body = body[1:]
+
+        if len(body) != 1:
+            return False
+        stmt = body[0]
+        if not isinstance(stmt, ast.Return) or stmt.value is None:
+            return False
+
+        lineno = getattr(stmt, "lineno", None)
+        end_lineno = getattr(stmt, "end_lineno", lineno)
+        return lineno is not None and end_lineno == lineno
+
     def _build_dataset_and_spec(self) -> tuple[dict, str]:
         """读取 CSV，构造 dataset 与 specification 文本。"""
         df = pd.read_csv(self.data_csv)
@@ -320,6 +358,9 @@ class LLMSRRegressor:
                 with open(path, "r", encoding="utf-8") as f:
                     d = json.load(f)
             except Exception:
+                continue
+            func_str = d.get("function", "")
+            if not self._is_single_line_formula_function(func_str):
                 continue
             # 新格式优先：nmse / mse
             key_val = None
