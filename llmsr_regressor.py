@@ -39,6 +39,7 @@ class LLMSRRegressor:
         max_params: int = 10,
         niterations: int = 2500,
         samples_per_iteration: int = 4,
+        timeout_in_seconds: Optional[int] = None,
         seed: Optional[int] = None,
         existing_exp_dir: Optional[str] = None,
         anonymize: bool = False,
@@ -57,6 +58,7 @@ class LLMSRRegressor:
         self.max_params = max_params
         self.niterations = niterations
         self.samples_per_iteration = samples_per_iteration
+        self.timeout_in_seconds = timeout_in_seconds
         self.seed = seed
         self.wandb_config = wandb_config or {}
         self.metadata_path = metadata_path
@@ -253,6 +255,7 @@ class LLMSRRegressor:
             "max_params": self.max_params,
             "niterations": self.niterations,
             "samples_per_iteration": self.samples_per_iteration,
+            "timeout_in_seconds": self.timeout_in_seconds,
             "seed": self.seed,
         }
         meta_path = os.path.join(self.exp_dir_, "meta.json")
@@ -446,7 +449,10 @@ class LLMSRRegressor:
             llm_class=sampler.LocalLLM,
             sandbox_class=evaluator.LocalSandbox,
         )
-        cfg = config_mod.Config(samples_per_prompt=self.samples_per_iteration)
+        cfg = config_mod.Config(
+            samples_per_prompt=self.samples_per_iteration,
+            wall_time_limit_seconds=self._resolve_wall_time_limit_seconds(),
+        )
 
         niterations = int(max(1, self.niterations))
         samples_per_iter = int(max(1, self.samples_per_iteration))
@@ -498,6 +504,13 @@ class LLMSRRegressor:
                 print(f"[LLMSR] WandB 记录失败（summary），已忽略: {e}")
 
         return self
+
+    def _resolve_wall_time_limit_seconds(self) -> Optional[int]:
+        try:
+            raw = int(self.timeout_in_seconds) if self.timeout_in_seconds is not None else None
+        except Exception:
+            return None
+        return raw if raw and raw > 0 else None
 
     def predict(self, X: Union[np.ndarray, pd.DataFrame]) -> np.ndarray:
         """使用已搜索到的最佳方程，对新样本进行预测。"""

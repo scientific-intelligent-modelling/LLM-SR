@@ -58,7 +58,8 @@ class Config:
     num_samplers: int = 1 
     num_evaluators: int = 1
     samples_per_prompt: int = 4
-    evaluate_timeout_seconds: int = 30  
+    evaluate_timeout_seconds: int = 30
+    wall_time_limit_seconds: int | None = None
 
 
 @dataclasses.dataclass()
