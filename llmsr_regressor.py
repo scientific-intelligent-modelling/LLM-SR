@@ -91,7 +91,7 @@ class LLMSRRegressor:
     # --------------------
     @staticmethod
     def _is_single_line_formula_function(func_source: Any) -> bool:
-        """只接受 equation 内唯一有效语句是单行 return 的候选。"""
+        """接受仅包含字符串说明块和单个 return 的 equation 候选。"""
         if not isinstance(func_source, str) or not func_source.strip():
             return False
         try:
@@ -108,7 +108,7 @@ class LLMSRRegressor:
             return False
 
         body = list(equation_func.body)
-        if (
+        while (
             body
             and isinstance(body[0], ast.Expr)
             and isinstance(getattr(body[0], "value", None), ast.Constant)
@@ -121,10 +121,7 @@ class LLMSRRegressor:
         stmt = body[0]
         if not isinstance(stmt, ast.Return) or stmt.value is None:
             return False
-
-        lineno = getattr(stmt, "lineno", None)
-        end_lineno = getattr(stmt, "end_lineno", lineno)
-        return lineno is not None and end_lineno == lineno
+        return True
 
     def _build_dataset_and_spec(self) -> tuple[dict, str]:
         """读取 CSV，构造 dataset 与 specification 文本。"""
