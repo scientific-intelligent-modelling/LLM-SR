@@ -91,6 +91,7 @@ def main(
             log_dir,
             samples_per_iteration=config.samples_per_prompt,
             target_variance=target_variance,
+            persist_all_samples=bool(kwargs.get('persist_all_samples', False)),
             wandb_run=kwargs.get('wandb_run'),
         )
 

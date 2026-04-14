@@ -18,6 +18,7 @@ class Profiler:
             max_log_nums: int | None = None,
             samples_per_iteration: int | None = None,
             target_variance: Optional[float] = None,
+            persist_all_samples: bool = False,
             wandb_run=None,
     ):
         """
@@ -36,6 +37,7 @@ class Profiler:
         os.makedirs(self._best_history_dir, exist_ok=True)
         # 每个 iteration 样本数，用于把 sample_order 映射到 iteration
         self._samples_per_iteration = samples_per_iteration or 1
+        self._persist_all_samples = bool(persist_all_samples)
         # 目标变量的方差，用于计算和排序 NMSE（越小越好）
         self._target_variance: Optional[float] = target_variance
         # 进度记录文件路径：保存每个 iteration 的最佳信息
@@ -258,10 +260,9 @@ class Profiler:
             self._all_sampled_functions[sample_orders] = programs
             self._record_and_verbose(sample_orders)
             self._write_tensorboard()
-            # 只在 samples 目录中保存“最佳”相关数据：不再为每个样本单独写 samples_{id}.json，
-            # 而是通过 Top-K 文件持久化当前最优集合。
-            # self._write_json(programs)
-            # 每次有新样本注册时，刷新前 Top-K 方程文件（top{rank}_samples_{sample_order}.json）
+            if self._persist_all_samples:
+                self._write_json(programs)
+            # 无论是否保留全量样本，都刷新 Top-K 方程文件。
             self._write_topk_json()
             # 更新按 iteration 统计的进度信息
             self._update_iteration_progress(sample_orders)

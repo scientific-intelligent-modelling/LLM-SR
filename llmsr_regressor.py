@@ -46,6 +46,7 @@ class LLMSRRegressor:
         metadata_path: Optional[str] = None,
         feature_descriptions: Optional[List[Optional[str]]] = None,
         target_description: Optional[str] = None,
+        persist_all_samples: bool = False,
         wandb_config: Optional[Dict[str, Any]] = None,
     ):
         # 训练相关配置
@@ -60,6 +61,7 @@ class LLMSRRegressor:
         self.samples_per_iteration = samples_per_iteration
         self.timeout_in_seconds = timeout_in_seconds
         self.seed = seed
+        self.persist_all_samples = bool(persist_all_samples)
         self.wandb_config = wandb_config or {}
         self.metadata_path = metadata_path
         self.feature_descriptions_ = feature_descriptions
@@ -255,6 +257,7 @@ class LLMSRRegressor:
             "max_params": self.max_params,
             "niterations": self.niterations,
             "samples_per_iteration": self.samples_per_iteration,
+            "persist_all_samples": self.persist_all_samples,
             "timeout_in_seconds": self.timeout_in_seconds,
             "seed": self.seed,
         }
@@ -315,6 +318,7 @@ class LLMSRRegressor:
             "max_params": self.max_params,
             "niterations": self.niterations,
             "samples_per_iteration": self.samples_per_iteration,
+            "persist_all_samples": self.persist_all_samples,
             "seed": self.seed,
             "anonymize": self.anonymize,
             "dataset": dataset_info,
@@ -466,6 +470,7 @@ class LLMSRRegressor:
             max_sample_nums=max_samples,
             class_config=class_config,
             log_dir=exp_dir,
+            persist_all_samples=self.persist_all_samples,
             llm_client=client,
             seed=self.seed,
             wandb_run=self._wandb_run,
