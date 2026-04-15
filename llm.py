@@ -3,7 +3,7 @@ import time
 """统一的 LLM 客户端封装。
 
 提供商/模型命名规则：'provider/model'，provider 大小写不敏感，model 保留大小写与路径。
-当前支持：deepseek、siliconflow、deepinfra、ollama、blt、cstcloud（科技云）。
+当前支持：deepseek、siliconflow、deepinfra、ollama、blt、cstcloud（科技云）、mock。
 """
 import requests
 from typing import List, Dict, Tuple
@@ -291,6 +291,84 @@ class BltClient(LLMClient):
         base_url = base_url or os.getenv('BLT_API_BASE', 'https://api.bltcy.ai/v1')
         super().__init__(api_key=api_key, model=model, base_url=base_url)
 
+
+class MockFixedClient(LLMClient):
+    """固定返回同一段响应，用于并发压测，完全不发起真实网络请求。"""
+
+    def __init__(
+        self,
+        model: str,
+        fixed_response: str,
+        sleep_seconds: float = 0.0,
+        prompt_tokens: int = 0,
+        content_tokens: int = 0,
+    ):
+        super().__init__(api_key="", model=model, base_url="mock://local")
+        self.fixed_response = fixed_response
+        self.sleep_seconds = max(float(sleep_seconds), 0.0)
+        self.prompt_tokens = max(int(prompt_tokens), 0)
+        self.content_tokens = max(int(content_tokens), 0)
+
+    def chat(self, messages: List[Dict[str, str]]) -> dict:
+        del messages
+        if self.sleep_seconds > 0:
+            time.sleep(self.sleep_seconds)
+
+        total_tokens = self.prompt_tokens + self.content_tokens
+        self.tokens['prompt'] += self.prompt_tokens
+        self.tokens['content'] += self.content_tokens
+        self.tokens['reasoning'] += 0
+        self.tokens['total'] += total_tokens
+
+        try:
+            GLOBAL_TOKENS['prompt'] += int(self.prompt_tokens)
+            GLOBAL_TOKENS['thinking'] += 0
+            GLOBAL_TOKENS['content'] += int(self.content_tokens)
+            GLOBAL_TOKENS['total'] += int(total_tokens)
+        except Exception:
+            pass
+
+        try:
+            self._call_index += 1
+            self._cum_tokens['prompt'] += int(self.prompt_tokens)
+            self._cum_tokens['thinking'] += 0
+            self._cum_tokens['content'] += int(self.content_tokens)
+            self._cum_tokens['total'] += int(total_tokens)
+            provider = 'mock'
+            header = f"[{provider}][{self.model}] 第{self._call_index}次"
+            line_cur = (
+                f"本次 tokens：prompt={int(self.prompt_tokens)}, thinking=0, "
+                f"content={int(self.content_tokens)}, total={int(total_tokens)}"
+            )
+            line_cum = (
+                f"累计 tokens：prompt={self._cum_tokens['prompt']}, thinking={self._cum_tokens['thinking']}, "
+                f"content={self._cum_tokens['content']}, total={self._cum_tokens['total']}"
+            )
+            line_time = (
+                f"本次用时：{self.sleep_seconds:.2f}s，"
+                f"累计用时：{self._cum_time_seconds + self.sleep_seconds:.2f}s"
+            )
+            self._cum_time_seconds += float(self.sleep_seconds)
+            try:
+                global GLOBAL_TIME_SECONDS
+                GLOBAL_TIME_SECONDS += float(self.sleep_seconds)
+            except Exception:
+                pass
+            print(header + "\n" + line_cur + "\n" + line_cum + "\n" + line_time)
+        except Exception:
+            pass
+
+        return {
+            "content": self.fixed_response,
+            "reasoning_content": "",
+            "tokens": {
+                "prompt": self.prompt_tokens,
+                "content": self.content_tokens,
+                "reasoning": 0,
+                "total": total_tokens,
+            }
+        }
+
 def parse_provider_model(model_str: str) -> Tuple[str, str]:
     """
     解析模型字符串为 (provider, model)。
@@ -301,6 +379,7 @@ def parse_provider_model(model_str: str) -> Tuple[str, str]:
     - "SiliconFlow/Qwen/Qwen3-8B" -> ("siliconflow", "Qwen/Qwen3-8B")
     - "deepinfra/meta-llama/Meta-Llama-3.1-8B-Instruct" -> ("deepinfra", "meta-llama/Meta-Llama-3.1-8B-Instruct")
     - "ollama/llama3.1:8b" -> ("ollama", "llama3.1:8b")
+    - "mock/fixed" -> ("mock", "fixed")
     """
     if not isinstance(model_str, str) or '/' not in model_str:
         raise ValueError("缺少模型提供商：请使用 'provider/model' 格式，例如 'CSTCloud/gpt-oss-120b'")
@@ -363,8 +442,21 @@ class ClientFactory:
         elif provider in ('cstcloud', 'cst', 'cst-cloud', 'keji', 'keji-yun'):
             # 科技云：默认基址 https://uni-api.cstcloud.cn/v1
             return CSTCloudClient(api_key=api_key or os.getenv('CSTCLOUD_API_KEY', ''), model=model, base_url=base_url or 'https://uni-api.cstcloud.cn/v1')
+        elif provider in ('mock', 'fake'):
+            fixed_response = (
+                config.get('fixed_response')
+                or config.get('mock_response')
+                or "    return x0 + params[0]\n"
+            )
+            return MockFixedClient(
+                model=model,
+                fixed_response=fixed_response,
+                sleep_seconds=config.get('mock_sleep_seconds', 0.0),
+                prompt_tokens=config.get('mock_prompt_tokens', 0),
+                content_tokens=config.get('mock_content_tokens', 0),
+            )
         else:
-            raise ValueError(f"不支持的提供商: {provider}，请使用 'deepseek'、'siliconflow'、'deepinfra'、'blt'、'cstcloud' 或 'ollama'")
+            raise ValueError(f"不支持的提供商: {provider}，请使用 'deepseek'、'siliconflow'、'deepinfra'、'blt'、'cstcloud'、'mock' 或 'ollama'")
         
 
 
