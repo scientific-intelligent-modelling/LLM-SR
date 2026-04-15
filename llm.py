@@ -292,28 +292,22 @@ class BltClient(LLMClient):
         super().__init__(api_key=api_key, model=model, base_url=base_url)
 
 
-class MockFixedClient(LLMClient):
-    """固定返回同一段响应，用于并发压测，完全不发起真实网络请求。"""
+class MockBaseClient(LLMClient):
+    """mock 客户端基类：不发网络请求，只回放预设响应。"""
 
     def __init__(
         self,
         model: str,
-        fixed_response: str,
         sleep_seconds: float = 0.0,
         prompt_tokens: int = 0,
         content_tokens: int = 0,
     ):
         super().__init__(api_key="", model=model, base_url="mock://local")
-        self.fixed_response = fixed_response
         self.sleep_seconds = max(float(sleep_seconds), 0.0)
         self.prompt_tokens = max(int(prompt_tokens), 0)
         self.content_tokens = max(int(content_tokens), 0)
 
-    def chat(self, messages: List[Dict[str, str]]) -> dict:
-        del messages
-        if self.sleep_seconds > 0:
-            time.sleep(self.sleep_seconds)
-
+    def _record_usage(self) -> None:
         total_tokens = self.prompt_tokens + self.content_tokens
         self.tokens['prompt'] += self.prompt_tokens
         self.tokens['content'] += self.content_tokens
@@ -358,8 +352,11 @@ class MockFixedClient(LLMClient):
         except Exception:
             pass
 
+    def _build_response(self, content: str) -> dict:
+        total_tokens = self.prompt_tokens + self.content_tokens
+        self._record_usage()
         return {
-            "content": self.fixed_response,
+            "content": content,
             "reasoning_content": "",
             "tokens": {
                 "prompt": self.prompt_tokens,
@@ -368,6 +365,64 @@ class MockFixedClient(LLMClient):
                 "total": total_tokens,
             }
         }
+
+
+class MockFixedClient(MockBaseClient):
+    """固定返回同一段响应，用于并发压测，完全不发起真实网络请求。"""
+
+    def __init__(
+        self,
+        model: str,
+        fixed_response: str,
+        sleep_seconds: float = 0.0,
+        prompt_tokens: int = 0,
+        content_tokens: int = 0,
+    ):
+        super().__init__(
+            model=model,
+            sleep_seconds=sleep_seconds,
+            prompt_tokens=prompt_tokens,
+            content_tokens=content_tokens,
+        )
+        self.fixed_response = fixed_response
+
+    def chat(self, messages: List[Dict[str, str]]) -> dict:
+        del messages
+        if self.sleep_seconds > 0:
+            time.sleep(self.sleep_seconds)
+        return self._build_response(self.fixed_response)
+
+
+class MockPoolClient(MockBaseClient):
+    """轮询返回一个固定响应池，用于多轮压力测试。"""
+
+    def __init__(
+        self,
+        model: str,
+        responses: List[str],
+        sleep_seconds: float = 0.0,
+        prompt_tokens: int = 0,
+        content_tokens: int = 0,
+    ):
+        super().__init__(
+            model=model,
+            sleep_seconds=sleep_seconds,
+            prompt_tokens=prompt_tokens,
+            content_tokens=content_tokens,
+        )
+        cleaned = [str(item) for item in responses if str(item).strip()]
+        if not cleaned:
+            raise ValueError("mock/pool 需要至少一条非空响应")
+        self.responses = cleaned
+        self._response_index = 0
+
+    def chat(self, messages: List[Dict[str, str]]) -> dict:
+        del messages
+        if self.sleep_seconds > 0:
+            time.sleep(self.sleep_seconds)
+        content = self.responses[self._response_index % len(self.responses)]
+        self._response_index += 1
+        return self._build_response(content)
 
 def parse_provider_model(model_str: str) -> Tuple[str, str]:
     """
@@ -380,6 +435,7 @@ def parse_provider_model(model_str: str) -> Tuple[str, str]:
     - "deepinfra/meta-llama/Meta-Llama-3.1-8B-Instruct" -> ("deepinfra", "meta-llama/Meta-Llama-3.1-8B-Instruct")
     - "ollama/llama3.1:8b" -> ("ollama", "llama3.1:8b")
     - "mock/fixed" -> ("mock", "fixed")
+    - "mock/pool" -> ("mock", "pool")
     """
     if not isinstance(model_str, str) or '/' not in model_str:
         raise ValueError("缺少模型提供商：请使用 'provider/model' 格式，例如 'CSTCloud/gpt-oss-120b'")
@@ -443,6 +499,24 @@ class ClientFactory:
             # 科技云：默认基址 https://uni-api.cstcloud.cn/v1
             return CSTCloudClient(api_key=api_key or os.getenv('CSTCLOUD_API_KEY', ''), model=model, base_url=base_url or 'https://uni-api.cstcloud.cn/v1')
         elif provider in ('mock', 'fake'):
+            if model == 'pool':
+                responses = (
+                    config.get('mock_responses')
+                    or config.get('response_pool')
+                    or config.get('responses')
+                    or [
+                        "    return x0 + params[0]\n",
+                        "    return x1 + params[0]\n",
+                        "    return x0 + x1 + params[0]\n",
+                    ]
+                )
+                return MockPoolClient(
+                    model=model,
+                    responses=responses,
+                    sleep_seconds=config.get('mock_sleep_seconds', 0.0),
+                    prompt_tokens=config.get('mock_prompt_tokens', 0),
+                    content_tokens=config.get('mock_content_tokens', 0),
+                )
             fixed_response = (
                 config.get('fixed_response')
                 or config.get('mock_response')
