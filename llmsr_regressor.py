@@ -208,6 +208,7 @@ class LLMSRRegressor:
             "max_tokens",
             "temperature",
             "top_p",
+            "top_k",
             "n",
             "stream",
             "presence_penalty",
